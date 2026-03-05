@@ -1,0 +1,65 @@
+import React from 'react';
+
+function EntityTable({ rows, onDelete, onRowClick }) {
+  if (!rows || rows.length === 0) {
+    return <div>Henüz kayıt yok. Sağ üstteki + ile yeni kayıt ekleyebilirsin.</div>;
+  }
+
+  let columns = Object.keys(rows[0] || {});
+  // Kullanıcıya sadece anlamlı alanları göster
+  // - "id" kolonu
+  // - ...Id ile biten teknik kolonlar (masaId, urunId vb.)
+  const visibleColumns = columns.filter(
+    (c) => c !== 'id' && !c.toLowerCase().endsWith('id')
+  );
+  if (visibleColumns.length > 0) {
+    columns = visibleColumns;
+  }
+
+  return (
+    <div className="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            {columns.map((col) => (
+              <th key={col}>{col}</th>
+            ))}
+            {onDelete && <th>Aksiyonlar</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.id || JSON.stringify(row)}
+              className={onRowClick ? 'clickable-row' : undefined}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+            >
+              {columns.map((col) => (
+                <td key={col}>{String(row[col])}</td>
+              ))}
+              {onDelete && (
+                <td>
+                  {row.id && (
+                    <button
+                      type="button"
+                      className="danger-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(row.id);
+                      }}
+                    >
+                      Sil
+                    </button>
+                  )}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default EntityTable;
+
