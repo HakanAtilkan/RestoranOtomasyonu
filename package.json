@@ -12,5 +12,8 @@
   "scripts": {
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev"
+  },
+  "dependencies": {
+    "mysql2": "^3.20.0"
   }
 }
