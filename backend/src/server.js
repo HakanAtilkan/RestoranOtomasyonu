@@ -4,6 +4,7 @@ const morgan = require('morgan');
 const path = require('path');
 
 const apiRouter = require('./routes');
+const { initDb } = require('./db/init');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -24,6 +25,17 @@ app.get('/', (req, res) => {
   });
 });
 
+// DB health (MySQL)
+app.get('/api/health/db', async (req, res) => {
+  try {
+    // initDb pool üzerinden SELECT atıyor, bu da bağlantıyı doğrular
+    await initDb();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.use('/api', apiRouter);
 
 // SPA fallback (API disindaki route'lar)
@@ -40,6 +52,9 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, () => {
+  initDb()
+    .then(() => console.log('MySQL init tamam'))
+    .catch((e) => console.log('MySQL init hata:', e.message));
   console.log(`API http://localhost:${PORT} uzerinde calisiyor`);
 });
 
