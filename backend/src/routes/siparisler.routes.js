@@ -1,37 +1,117 @@
 const express = require('express');
 const { Siparisler } = require('../models');
+const { getPool } = require('../config/db');
+const { newId } = require('../db/id');
 
 const router = express.Router();
 
 router.get('/', (req, res) => {
-  res.json(Siparisler.findAll());
+  let pool;
+  try {
+    pool = getPool();
+  } catch {
+    pool = null;
+  }
+  if (!pool) return res.json(Siparisler.findAll());
+
+  pool
+    .query('SELECT * FROM siparisler')
+    .then(([rows]) => res.json(rows))
+    .catch((e) => res.status(500).json({ error: e.message }));
 });
 
 router.post('/', (req, res) => {
-  const created = Siparisler.create({
+  let pool;
+  try {
+    pool = getPool();
+  } catch {
+    pool = null;
+  }
+  const payload = {
     masaId: req.body.masaId,
-    kullaniciId: req.body.kullaniciId,
-    durum: req.body.durum || 'acik',
-    toplamTutar: req.body.toplamTutar || 0,
+    kullaniciId: req.body.kullaniciId || null,
+    durum: req.body.durum || 'bekliyor',
+    toplamTutar: Number(req.body.toplamTutar) || 0,
     olusturmaTarihi: new Date().toISOString()
-  });
-  res.status(201).json(created);
+  };
+
+  if (!pool) {
+    const created = Siparisler.create(payload);
+    return res.status(201).json(created);
+  }
+
+  const id = newId();
+  pool
+    .query(
+      'INSERT INTO siparisler (id, masaId, kullaniciId, durum, toplamTutar, olusturmaTarihi) VALUES (?,?,?,?,?,?)',
+      [id, payload.masaId, payload.kullaniciId, payload.durum, payload.toplamTutar, payload.olusturmaTarihi]
+    )
+    .then(() => res.status(201).json({ id, ...payload }))
+    .catch((e) => res.status(500).json({ error: e.message }));
 });
 
 router.put('/:id', (req, res) => {
-  const updated = Siparisler.update(req.params.id, req.body);
-  if (!updated) {
-    return res.status(404).json({ error: 'Kayıt bulunamadı' });
+  let pool;
+  try {
+    pool = getPool();
+  } catch {
+    pool = null;
   }
-  res.json(updated);
+  if (!pool) {
+    const updated = Siparisler.update(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Kayıt bulunamadı' });
+    }
+    return res.json(updated);
+  }
+
+  const fields = [];
+  const values = [];
+  const allowed = ['durum', 'toplamTutar', 'kullaniciId', 'masaId'];
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) {
+      fields.push(`${key}=?`);
+      values.push(key === 'toplamTutar' ? Number(req.body[key]) || 0 : req.body[key]);
+    }
+  }
+  if (fields.length === 0) return res.status(400).json({ error: 'Güncellenecek alan yok' });
+  values.push(req.params.id);
+
+  pool
+    .query(`UPDATE siparisler SET ${fields.join(', ')} WHERE id=?`, values)
+    .then(([result]) => {
+      if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
+      return pool.query('SELECT * FROM siparisler WHERE id=? LIMIT 1', [req.params.id]);
+    })
+    .then((selectRes) => {
+      const rows = Array.isArray(selectRes) ? selectRes[0] : [];
+      res.json(rows[0]);
+    })
+    .catch((e) => res.status(500).json({ error: e.message }));
 });
 
 router.delete('/:id', (req, res) => {
-  const ok = Siparisler.remove(req.params.id);
-  if (!ok) {
-    return res.status(404).json({ error: 'Kayıt bulunamadı' });
+  let pool;
+  try {
+    pool = getPool();
+  } catch {
+    pool = null;
   }
-  res.status(204).send();
+  if (!pool) {
+    const ok = Siparisler.remove(req.params.id);
+    if (!ok) {
+      return res.status(404).json({ error: 'Kayıt bulunamadı' });
+    }
+    return res.status(204).send();
+  }
+
+  pool
+    .query('DELETE FROM siparisler WHERE id=?', [req.params.id])
+    .then(([result]) => {
+      if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
+      res.status(204).send();
+    })
+    .catch((e) => res.status(500).json({ error: e.message }));
 });
 
 module.exports = router;
