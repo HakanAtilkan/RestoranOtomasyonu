@@ -119,8 +119,8 @@ const ENTITIES = [
           {
             name: 'tedarikciId',
             label: 'Tedarikçi Adı',
-            control: 'select',
-            placeholder: 'Tedarikçi seçin'
+            type: 'text',
+            placeholder: 'Tedarikçi adı'
           },
           {
             name: 'birim',

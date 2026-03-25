@@ -1,5 +1,5 @@
 const express = require('express');
-const { StokHareketleri, Hammaddeler } = require('../models');
+const { StokHareketleri, Hammaddeler, Tedarikciler } = require('../models');
 const { getPool } = require('../config/db');
 const { newId } = require('../db/id');
 
@@ -25,11 +25,43 @@ router.post('/', (req, res) => {
   const miktar = Number(req.body.miktar) || 0;
   const girilenHammadde = (req.body.hammaddeId || '').toString().trim();
   const birim = (req.body.birim || '').toString().trim();
-  const tedarikciId = (req.body.tedarikciId || '').toString().trim();
+  const tedarikciRaw = (req.body.tedarikciId || '').toString().trim();
 
-  if (!tedarikciId) {
-    return res.status(400).json({ error: 'Tedarikçi zorunlu' });
-  }
+  if (!tedarikciRaw) return res.status(400).json({ error: 'Tedarikçi zorunlu' });
+
+  const resolveTedarikciId = async (pool) => {
+    // Girilen değer bazen gerçek id, bazen ad olabilir.
+    if (!pool) {
+      const hamById = Tedarikciler.findById(tedarikciRaw);
+      if (hamById) return hamById.id;
+      const byName =
+        Tedarikciler.findAll().find(
+          (t) => t.ad && t.ad.toString().toLowerCase() === tedarikciRaw.toLowerCase()
+        ) || null;
+      if (byName) return byName.id;
+      const created = Tedarikciler.create({ ad: tedarikciRaw });
+      return created.id;
+    }
+
+    const [byId] = await pool.query(
+      'SELECT id FROM tedarikciler WHERE id=? LIMIT 1',
+      [tedarikciRaw]
+    );
+    if (byId[0]?.id) return byId[0].id;
+
+    const [byName] = await pool.query(
+      'SELECT id FROM tedarikciler WHERE LOWER(ad)=LOWER(?) LIMIT 1',
+      [tedarikciRaw]
+    );
+    if (byName[0]?.id) return byName[0].id;
+
+    const tedarikciId = newId();
+    await pool.query('INSERT INTO tedarikciler (id, ad) VALUES (?,?)', [
+      tedarikciId,
+      tedarikciRaw
+    ]);
+    return tedarikciId;
+  };
 
   let pool;
   try {
@@ -40,6 +72,7 @@ router.post('/', (req, res) => {
 
   // Bellek ici fallback
   if (!pool) {
+    const tedarikciId = await resolveTedarikciId(pool);
     // Hammadde'yi bul: önce id, sonra ad'a göre
     let ham =
       Hammaddeler.findById(girilenHammadde) ||
@@ -79,14 +112,7 @@ router.post('/', (req, res) => {
   }
 
   (async () => {
-    // Tedarikçi var mi kontrol et (yanlış/boş id gelirse join id gösterir)
-    const [tedRes] = await pool.query(
-      'SELECT id FROM tedarikciler WHERE id=? LIMIT 1',
-      [tedarikciId]
-    );
-    if (!tedRes[0]) {
-      return res.status(400).json({ error: 'Tedarikçi bulunamadi' });
-    }
+    const tedarikciId = await resolveTedarikciId(pool);
 
     // Hammadde'yi bul: önce id, sonra ad
     const [byId] = await pool.query('SELECT * FROM hammaddeler WHERE id=? LIMIT 1', [
@@ -132,7 +158,7 @@ router.post('/', (req, res) => {
     res.status(201).json({
       id,
       hammaddeId: ham.id,
-      tedarikciId: req.body.tedarikciId || null,
+      tedarikciId,
       tip,
       miktar,
       tarih
