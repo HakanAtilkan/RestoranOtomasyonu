@@ -5,12 +5,35 @@ import EntityForm from './components/EntityForm';
 
 const ENTITIES = [
   {
+    group: 'Yetki',
+    items: [
+      {
+        key: 'roller',
+        label: 'Roller',
+        path: '/api/roller',
+        fields: [{ name: 'ad', label: 'Rol Adı' }]
+      },
+      {
+        key: 'kullanicilar',
+        label: 'Kullanıcılar',
+        path: '/api/kullanicilar',
+        fields: [
+          { name: 'kullaniciAdi', label: 'Kullanıcı Adı' },
+          { name: 'sifre', label: 'Şifre', type: 'password' },
+          { name: 'ad', label: 'İsim' },
+          { name: 'soyad', label: 'Soyisim' },
+          { name: 'rolId', label: 'Rol Id' }
+        ]
+      }
+    ]
+  },
+  {
     group: 'Çalışanlar',
     items: [
       {
         key: 'calisanlar',
         label: 'Çalışanlar',
-        path: '/api/gorev-tanimlari',
+        path: '/api/calisanlar',
         hideAdd: true
       }
     ]
@@ -228,11 +251,10 @@ function App({ currentUser }) {
     (a, b) => (Number(a.ad) || 0) - (Number(b.ad) || 0)
   );
 
-  const [gorevTanimlari, setGorevTanimlari] = useState([]);
-  const [taskDrafts, setTaskDrafts] = useState({});
+  const [calisanlar, setCalisanlar] = useState([]);
+  const [calisanDrafts, setCalisanDrafts] = useState({});
 
   const ROLE_BLOCKS = [
-    { rolId: 'yonetici', title: 'Yönetici' },
     { rolId: 'garson', title: 'Garson' },
     { rolId: 'depocu', title: 'Depocu' },
     { rolId: 'mutfak', title: 'Mutfak' }
@@ -382,12 +404,12 @@ function App({ currentUser }) {
       setError('');
       setSaveMessage('');
       try {
-        const res = await fetch('/api/gorev-tanimlari');
-        if (!res.ok) throw new Error('Görev tanımları alınamadı');
+        const res = await fetch('/api/calisanlar');
+        if (!res.ok) throw new Error('Çalışanlar alınamadı');
         const data = await res.json();
-        setGorevTanimlari(Array.isArray(data) ? data : []);
+        setCalisanlar(Array.isArray(data) ? data : []);
       } catch (e) {
-        setError(e.message || 'Görev tanımları yüklenemedi');
+        setError(e.message || 'Çalışanlar yüklenemedi');
       } finally {
         setLoading(false);
       }
@@ -660,28 +682,35 @@ function App({ currentUser }) {
     }
   };
 
-  const addTask = async (rolId) => {
-    const gorevAdi = (taskDrafts[rolId] || '').toString().trim();
-    if (!gorevAdi) {
-      setSaveMessage('Görev tanımı boş olamaz.');
+  const addCalisan = async (rolId) => {
+    const draft = calisanDrafts[rolId] || {};
+    const ad = (draft.ad || '').toString().trim();
+    const soyad = (draft.soyad || '').toString().trim();
+    const gorevAdi = (draft.gorevAdi || '').toString().trim();
+
+    if (!ad || !soyad || !gorevAdi) {
+      setSaveMessage('İsim, soyisim ve görev tanımı zorunlu.');
       return;
     }
     setSaveMessage('');
     try {
-      const res = await fetch('/api/gorev-tanimlari', {
+      const res = await fetch('/api/calisanlar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rolId, gorevAdi })
+        body: JSON.stringify({ rolId, ad, soyad, gorevAdi })
       });
-      if (!res.ok) throw new Error('Görev eklenemedi');
-      const listRes = await fetch('/api/gorev-tanimlari');
-      if (!listRes.ok) throw new Error('Görev tanımları yenilenemedi');
+      if (!res.ok) throw new Error('Çalışan eklenemedi');
+      const listRes = await fetch('/api/calisanlar');
+      if (!listRes.ok) throw new Error('Çalışanlar yenilenemedi');
       const data = await listRes.json();
-      setGorevTanimlari(Array.isArray(data) ? data : []);
-      setTaskDrafts((prev) => ({ ...prev, [rolId]: '' }));
-      setSaveMessage('Görev eklendi.');
+      setCalisanlar(Array.isArray(data) ? data : []);
+      setCalisanDrafts((prev) => ({
+        ...prev,
+        [rolId]: { ad: '', soyad: '', gorevAdi: '' }
+      }));
+      setSaveMessage('Çalışan eklendi.');
     } catch (e) {
-      setError(e.message || 'Görev eklenirken hata oluştu');
+      setError(e.message || 'Çalışan eklenirken hata oluştu');
     }
   };
 
@@ -795,36 +824,89 @@ function App({ currentUser }) {
               {selected?.key === 'calisanlar' ? (
                 <div className="staff-page">
                   {ROLE_BLOCKS.map((r) => {
-                    const tasks = gorevTanimlari.filter((t) => t.rolId === r.rolId);
+                    const list = calisanlar.filter((t) => t.rolId === r.rolId);
                     return (
                       <div key={r.rolId} className="staff-role-card">
                         <div className="staff-role-title">{r.title}</div>
                         <div className="staff-task-list">
-                          {tasks.length === 0 && (
-                            <div className="staff-task-empty">Henüz görev yok.</div>
+                          {list.length === 0 && (
+                            <div className="staff-task-empty">Henüz çalışan yok.</div>
                           )}
-                          {tasks.map((t) => (
+                          {list.map((t) => (
                             <div key={t.id} className="staff-task-row">
-                              {t.gorevAdi}
+                              <span>
+                                {t.ad} {t.soyad} - {t.gorevAdi}
+                              </span>
+                              <button
+                                type="button"
+                                className="danger-btn staff-delete-btn"
+                                onClick={async () => {
+                                  try {
+                                    const delRes = await fetch(
+                                      `/api/calisanlar/${t.id}`,
+                                      { method: 'DELETE' }
+                                    );
+                                    if (!delRes.ok) throw new Error('Silme başarısız');
+                                    const listRes = await fetch('/api/calisanlar');
+                                    const data = await listRes.json();
+                                    setCalisanlar(Array.isArray(data) ? data : []);
+                                  } catch (e) {
+                                    setError(e.message || 'Silme sırasında hata oluştu');
+                                  }
+                                }}
+                              >
+                                Sil
+                              </button>
                             </div>
                           ))}
                         </div>
                         <div className="staff-add-row">
                           <input
                             className="add-input"
-                            value={taskDrafts[r.rolId] ?? ''}
+                            value={calisanDrafts[r.rolId]?.ad ?? ''}
                             onChange={(e) =>
-                              setTaskDrafts((prev) => ({
+                              setCalisanDrafts((prev) => ({
                                 ...prev,
-                                [r.rolId]: e.target.value
+                                [r.rolId]: {
+                                  ...(prev[r.rolId] || {}),
+                                  ad: e.target.value
+                                }
                               }))
                             }
-                            placeholder="Yeni görev tanımı (elle gir)"
+                            placeholder="İsim"
+                          />
+                          <input
+                            className="add-input"
+                            value={calisanDrafts[r.rolId]?.soyad ?? ''}
+                            onChange={(e) =>
+                              setCalisanDrafts((prev) => ({
+                                ...prev,
+                                [r.rolId]: {
+                                  ...(prev[r.rolId] || {}),
+                                  soyad: e.target.value
+                                }
+                              }))
+                            }
+                            placeholder="Soyisim"
+                          />
+                          <input
+                            className="add-input"
+                            value={calisanDrafts[r.rolId]?.gorevAdi ?? ''}
+                            onChange={(e) =>
+                              setCalisanDrafts((prev) => ({
+                                ...prev,
+                                [r.rolId]: {
+                                  ...(prev[r.rolId] || {}),
+                                  gorevAdi: e.target.value
+                                }
+                              }))
+                            }
+                            placeholder="Görev tanımı"
                           />
                           <button
                             type="button"
                             className="primary-btn"
-                            onClick={() => addTask(r.rolId)}
+                            onClick={() => addCalisan(r.rolId)}
                           >
                             Ekle
                           </button>

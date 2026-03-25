@@ -20,6 +20,7 @@ router.use('/receteler', require('./receteler.routes'));
 router.use('/stok-hareketleri', require('./stokHareketleri.routes'));
 router.use('/tedarikciler', require('./tedarikciler.routes'));
 
+router.use('/calisanlar', require('./calisanlar.routes'));
 router.use('/gorev-tanimlari', require('./gorevTanimlari.routes'));
 
 module.exports = router;

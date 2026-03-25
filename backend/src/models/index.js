@@ -43,6 +43,9 @@ const Tedarikciler = createCollection([]);
 // Gorev tanimlari (rol bazli)
 const GorevTanimlari = createCollection([]);
 
+// Calisanlar (isim/soyisim/gorev tanimi)
+const Calisanlar = createCollection([]);
+
 module.exports = {
   Roller,
   Kullanicilar,
@@ -59,6 +62,7 @@ module.exports = {
   StokHareketleri,
   Tedarikciler
   ,
-  GorevTanimlari
+  GorevTanimlari,
+  Calisanlar
 };
 
