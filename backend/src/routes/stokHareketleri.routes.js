@@ -20,7 +20,7 @@ router.get('/', (req, res) => {
     .catch((e) => res.status(500).json({ error: e.message }));
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const tip = req.body.tip || 'giris'; // giris / cikis
   const miktar = Number(req.body.miktar) || 0;
   const girilenHammadde = (req.body.hammaddeId || '').toString().trim();
@@ -70,9 +70,11 @@ router.post('/', (req, res) => {
     pool = null;
   }
 
+  // Tedarikci id'yi hem MySQL hem de bellek fallback senaryosunda resolve et.
+  const tedarikciId = await resolveTedarikciId(pool);
+
   // Bellek ici fallback
   if (!pool) {
-    const tedarikciId = await resolveTedarikciId(pool);
     // Hammadde'yi bul: önce id, sonra ad'a göre
     let ham =
       Hammaddeler.findById(girilenHammadde) ||
@@ -111,59 +113,55 @@ router.post('/', (req, res) => {
     return res.status(201).json(created);
   }
 
-  (async () => {
-    const tedarikciId = await resolveTedarikciId(pool);
-
-    // Hammadde'yi bul: önce id, sonra ad
-    const [byId] = await pool.query('SELECT * FROM hammaddeler WHERE id=? LIMIT 1', [
-      girilenHammadde
-    ]);
-    let ham = byId[0] || null;
-    if (!ham && girilenHammadde) {
-      const [byName] = await pool.query(
-        'SELECT * FROM hammaddeler WHERE LOWER(ad)=LOWER(?) LIMIT 1',
-        [girilenHammadde]
-      );
-      ham = byName[0] || null;
-    }
-
-    if (!ham) {
-      const hamId = newId();
-      const ilkMiktar = tip === 'cikis' ? -miktar : miktar;
-      await pool.query('INSERT INTO hammaddeler (id, ad, miktar, birim) VALUES (?,?,?,?)', [
-        hamId,
-        girilenHammadde,
-        ilkMiktar,
-        birim || null
-      ]);
-      ham = { id: hamId, ad: girilenHammadde, miktar: ilkMiktar, birim: birim || null };
-    } else {
-      const mevcut = Number(ham.miktar) || 0;
-      const yeniMiktar = tip === 'cikis' ? mevcut - miktar : mevcut + miktar;
-      await pool.query('UPDATE hammaddeler SET miktar=?, birim=? WHERE id=?', [
-        yeniMiktar,
-        birim || ham.birim || null,
-        ham.id
-      ]);
-      ham = { ...ham, miktar: yeniMiktar, birim: birim || ham.birim || null };
-    }
-
-    const id = newId();
-    const tarih = new Date().toISOString();
-    await pool.query(
-      'INSERT INTO stok_hareketleri (id, hammaddeId, tedarikciId, tip, miktar, tarih) VALUES (?,?,?,?,?,?)',
-      [id, ham.id, tedarikciId, tip, miktar, tarih]
+  // Hammadde'yi bul: önce id, sonra ad
+  const [byId] = await pool.query('SELECT * FROM hammaddeler WHERE id=? LIMIT 1', [
+    girilenHammadde
+  ]);
+  let ham = byId[0] || null;
+  if (!ham && girilenHammadde) {
+    const [byName] = await pool.query(
+      'SELECT * FROM hammaddeler WHERE LOWER(ad)=LOWER(?) LIMIT 1',
+      [girilenHammadde]
     );
+    ham = byName[0] || null;
+  }
 
-    res.status(201).json({
-      id,
-      hammaddeId: ham.id,
-      tedarikciId,
-      tip,
-      miktar,
-      tarih
-    });
-  })().catch((e) => res.status(500).json({ error: e.message }));
+  if (!ham) {
+    const hamId = newId();
+    const ilkMiktar = tip === 'cikis' ? -miktar : miktar;
+    await pool.query('INSERT INTO hammaddeler (id, ad, miktar, birim) VALUES (?,?,?,?)', [
+      hamId,
+      girilenHammadde,
+      ilkMiktar,
+      birim || null
+    ]);
+    ham = { id: hamId, ad: girilenHammadde, miktar: ilkMiktar, birim: birim || null };
+  } else {
+    const mevcut = Number(ham.miktar) || 0;
+    const yeniMiktar = tip === 'cikis' ? mevcut - miktar : mevcut + miktar;
+    await pool.query('UPDATE hammaddeler SET miktar=?, birim=? WHERE id=?', [
+      yeniMiktar,
+      birim || ham.birim || null,
+      ham.id
+    ]);
+    ham = { ...ham, miktar: yeniMiktar, birim: birim || ham.birim || null };
+  }
+
+  const id = newId();
+  const tarih = new Date().toISOString();
+  await pool.query(
+    'INSERT INTO stok_hareketleri (id, hammaddeId, tedarikciId, tip, miktar, tarih) VALUES (?,?,?,?,?,?)',
+    [id, ham.id, tedarikciId, tip, miktar, tarih]
+  );
+
+  return res.status(201).json({
+    id,
+    hammaddeId: ham.id,
+    tedarikciId,
+    tip,
+    miktar,
+    tarih
+  });
 });
 
 router.delete('/:id', (req, res) => {
