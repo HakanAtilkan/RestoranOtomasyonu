@@ -255,9 +255,9 @@ function App({ currentUser }) {
   const [calisanDrafts, setCalisanDrafts] = useState({});
 
   const ROLE_BLOCKS = [
-    { rolId: 'garson', title: 'Garson' },
-    { rolId: 'depocu', title: 'Depocu' },
-    { rolId: 'mutfak', title: 'Mutfak' }
+    { rolId: 'mutfak', title: 'Mutfak' },
+    { rolId: 'depocu', title: 'Depo' },
+    { rolId: 'garson', title: 'Karşılama' }
   ];
 
   useEffect(() => {
