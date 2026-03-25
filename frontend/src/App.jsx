@@ -52,7 +52,12 @@ const ENTITIES = [
         label: 'Masalar',
         path: '/api/masalar',
         fields: [
-          { name: 'ad', label: 'Masa Adı' },
+          {
+            name: 'ad',
+            label: 'Masa Numarası',
+            type: 'number',
+            placeholder: '1'
+          },
           { name: 'kapasite', label: 'Kapasite', type: 'number' },
           {
             name: 'rezerveDurum',
@@ -161,7 +166,8 @@ const ENTITIES = [
         label: 'Reçeteler',
         path: '/api/receteler',
         fields: [
-          { name: 'urunId', label: 'Ürün', control: 'select', placeholder: 'Ürün seçin' },
+          // Ürün adı artık serbest metin, select değil
+          { name: 'urunId', label: 'Ürün Adı' },
           { name: 'hammaddeId', label: 'Hammadde', control: 'select', placeholder: 'Hammadde seçin' },
           { name: 'miktar', label: 'Gramaj (gr)', type: 'number', placeholder: 'örn. 120' }
         ]
@@ -765,9 +771,12 @@ function App({ currentUser }) {
                       );
                     })()}
                   </div>
+                  const sortedMasalar = [...rows].sort(
+                    (a, b) => (Number(a.ad) || 0) - (Number(b.ad) || 0)
+                  );
                   <div className="masa-grid">
-                    {rows.length === 0 && <div>Henüz masa yok.</div>}
-                    {rows.map((masa) => {
+                    {sortedMasalar.length === 0 && <div>Henüz masa yok.</div>}
+                    {sortedMasalar.map((masa) => {
                       const sipForMasa = allSiparisler.filter((s) => s.masaId === masa.id);
                       const aktifSiparisler = sipForMasa.filter((s) =>
                         ['bekliyor', 'hazirlaniyor', 'hazir'].includes(s.durum)
