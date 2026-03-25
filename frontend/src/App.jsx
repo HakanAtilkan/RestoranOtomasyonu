@@ -250,6 +250,12 @@ function App({ currentUser }) {
   const [historyPayments, setHistoryPayments] = useState([]);
   const [hammaddeler, setHammaddeler] = useState([]);
 
+  // Masalar ekranında kartları ad (masa no) numarasina gore siralamak icin.
+  // Not: Tüm ekranlarda calistigindan dolayi ad olmayan kayitlarda 0 kabul ediyoruz.
+  const sortedMasalar = [...rows].sort(
+    (a, b) => (Number(a.ad) || 0) - (Number(b.ad) || 0)
+  );
+
   useEffect(() => {
     // rol değiştiğinde uygun ilk menü öğesine geç
     const first = visibleEntities[0]?.items[0] || null;
@@ -771,9 +777,6 @@ function App({ currentUser }) {
                       );
                     })()}
                   </div>
-                  const sortedMasalar = [...rows].sort(
-                    (a, b) => (Number(a.ad) || 0) - (Number(b.ad) || 0)
-                  );
                   <div className="masa-grid">
                     {sortedMasalar.length === 0 && <div>Henüz masa yok.</div>}
                     {sortedMasalar.map((masa) => {
