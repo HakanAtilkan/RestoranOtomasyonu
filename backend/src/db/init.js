@@ -49,6 +49,14 @@ async function initDb() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS tedarikci_urunler (
+      tedarikciId VARCHAR(64) NOT NULL,
+      urunId VARCHAR(64) NOT NULL,
+      PRIMARY KEY (tedarikciId, urunId)
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS stok_hareketleri (
       id VARCHAR(64) PRIMARY KEY,
       hammaddeId VARCHAR(64) NOT NULL,
@@ -107,6 +115,15 @@ async function initDb() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS gorev_tanimlari (
+      id VARCHAR(64) PRIMARY KEY,
+      rolId VARCHAR(64) NOT NULL,
+      gorevAdi VARCHAR(255) NOT NULL,
+      INDEX (rolId)
+    )
+  `);
+
   // temel seed (sadece tablo boşsa)
   const [[{ count: roleCount }]] = await pool.query(`SELECT COUNT(*) as count FROM roller`);
   if (Number(roleCount) === 0) {
@@ -132,6 +149,21 @@ async function initDb() {
         ['u-depo', 'depo', '123123', 'Depo', 'Görevlisi', 'depocu'],
         ['u-garson', 'garson', '123123', 'Garson', 'Kullanıcı', 'garson'],
         ['u-mutfak', 'mutfak', '123123', 'Mutfak', 'Personeli', 'mutfak']
+      ]]
+    );
+  }
+
+  // Mutfak gibi rol bloklarina default gorevler (sadece tablo boşsa)
+  const [[{ count: taskCount }]] = await pool.query(
+    `SELECT COUNT(*) as count FROM gorev_tanimlari`
+  );
+  if (Number(taskCount) === 0) {
+    await pool.query(
+      `INSERT INTO gorev_tanimlari (id, rolId, gorevAdi) VALUES ?`,
+      [[
+        // id'ler uniq olmasi icin sabit kullaniliyor (uygulama yeni kayitlarda uuid ile olusturur)
+        ['g-mut-ascI', 'mutfak', 'Aşçı'],
+        ['g-mut-bul', 'mutfak', 'Bulaşıkçı']
       ]]
     );
   }

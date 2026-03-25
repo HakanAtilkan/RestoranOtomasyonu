@@ -40,6 +40,9 @@ const StokHareketleri = createCollection([]);
 
 const Tedarikciler = createCollection([]);
 
+// Gorev tanimlari (rol bazli)
+const GorevTanimlari = createCollection([]);
+
 module.exports = {
   Roller,
   Kullanicilar,
@@ -55,5 +58,7 @@ module.exports = {
   Receteler,
   StokHareketleri,
   Tedarikciler
+  ,
+  GorevTanimlari
 };
 

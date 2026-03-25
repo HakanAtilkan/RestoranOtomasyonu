@@ -25,6 +25,11 @@ router.post('/', (req, res) => {
   const miktar = Number(req.body.miktar) || 0;
   const girilenHammadde = (req.body.hammaddeId || '').toString().trim();
   const birim = (req.body.birim || '').toString().trim();
+  const tedarikciId = (req.body.tedarikciId || '').toString().trim();
+
+  if (!tedarikciId) {
+    return res.status(400).json({ error: 'Tedarikçi zorunlu' });
+  }
 
   let pool;
   try {
@@ -65,7 +70,7 @@ router.post('/', (req, res) => {
 
     const created = StokHareketleri.create({
       hammaddeId: ham.id,
-      tedarikciId: req.body.tedarikciId || null,
+      tedarikciId,
       tip,
       miktar,
       tarih: new Date().toISOString()
@@ -74,6 +79,15 @@ router.post('/', (req, res) => {
   }
 
   (async () => {
+    // Tedarikçi var mi kontrol et (yanlış/boş id gelirse join id gösterir)
+    const [tedRes] = await pool.query(
+      'SELECT id FROM tedarikciler WHERE id=? LIMIT 1',
+      [tedarikciId]
+    );
+    if (!tedRes[0]) {
+      return res.status(400).json({ error: 'Tedarikçi bulunamadi' });
+    }
+
     // Hammadde'yi bul: önce id, sonra ad
     const [byId] = await pool.query('SELECT * FROM hammaddeler WHERE id=? LIMIT 1', [
       girilenHammadde
@@ -112,7 +126,7 @@ router.post('/', (req, res) => {
     const tarih = new Date().toISOString();
     await pool.query(
       'INSERT INTO stok_hareketleri (id, hammaddeId, tedarikciId, tip, miktar, tarih) VALUES (?,?,?,?,?,?)',
-      [id, ham.id, req.body.tedarikciId || null, tip, miktar, tarih]
+      [id, ham.id, tedarikciId, tip, miktar, tarih]
     );
 
     res.status(201).json({

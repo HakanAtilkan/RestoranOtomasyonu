@@ -5,42 +5,13 @@ import EntityForm from './components/EntityForm';
 
 const ENTITIES = [
   {
-    group: 'Yetki',
+    group: 'Çalışanlar',
     items: [
       {
-        key: 'roller',
-        label: 'Roller',
-        path: '/api/roller',
-        fields: [
-          { name: 'ad', label: 'Rol Adı' }
-        ]
-      },
-      {
-        key: 'kullanicilar',
-        label: 'Kullanıcılar',
-        path: '/api/kullanicilar',
-        fields: [
-          { name: 'ad', label: 'İsim' },
-          { name: 'soyad', label: 'Soyisim' },
-          { name: 'rolId', label: 'Görev / Rol Id' }
-        ]
-      },
-      {
-        key: 'islemler',
-        label: 'İşlemler',
-        path: '/api/islemler',
-        fields: [
-          { name: 'ad', label: 'İşlem Adı' }
-        ]
-      },
-      {
-        key: 'rol-islem',
-        label: 'Rol-İşlem',
-        path: '/api/rol-islem',
-        fields: [
-          { name: 'rolId', label: 'Rol Id' },
-          { name: 'islemId', label: 'İşlem Id' }
-        ]
+        key: 'calisanlar',
+        label: 'Çalışanlar',
+        path: '/api/gorev-tanimlari',
+        hideAdd: true
       }
     ]
   },
@@ -122,16 +93,11 @@ const ENTITIES = [
         path: '/api/stok-hareketleri',
         fields: [
           { name: 'hammaddeId', label: 'Hammadde Adı' },
-          { name: 'tedarikciId', label: 'Tedarikçi Id' },
           {
-            name: 'tip',
-            label: 'Hareket Tipi',
+            name: 'tedarikciId',
+            label: 'Tedarikçi Adı',
             control: 'select',
-            placeholder: 'Seçiniz',
-            options: [
-              { value: 'giris', label: 'Giriş' },
-              { value: 'cikis', label: 'Çıkış' }
-            ]
+            placeholder: 'Tedarikçi seçin'
           },
           {
             name: 'birim',
@@ -153,7 +119,12 @@ const ENTITIES = [
         label: 'Tedarikçiler',
         path: '/api/tedarikciler',
         fields: [
-          { name: 'ad', label: 'Tedarikçi Adı' }
+          { name: 'ad', label: 'Tedarikçi Adı' },
+          {
+            name: 'urunlerText',
+            label: 'Ürünler (virgülle)',
+            placeholder: 'örn. domates, biber, soğan'
+          }
         ]
       }
     ]
@@ -249,12 +220,23 @@ function App({ currentUser }) {
   const [historyItems, setHistoryItems] = useState([]);
   const [historyPayments, setHistoryPayments] = useState([]);
   const [hammaddeler, setHammaddeler] = useState([]);
+  const [tedarikciler, setTedarikciler] = useState([]);
 
   // Masalar ekranında kartları ad (masa no) numarasina gore siralamak icin.
   // Not: Tüm ekranlarda calistigindan dolayi ad olmayan kayitlarda 0 kabul ediyoruz.
   const sortedMasalar = [...rows].sort(
     (a, b) => (Number(a.ad) || 0) - (Number(b.ad) || 0)
   );
+
+  const [gorevTanimlari, setGorevTanimlari] = useState([]);
+  const [taskDrafts, setTaskDrafts] = useState({});
+
+  const ROLE_BLOCKS = [
+    { rolId: 'yonetici', title: 'Yönetici' },
+    { rolId: 'garson', title: 'Garson' },
+    { rolId: 'depocu', title: 'Depocu' },
+    { rolId: 'mutfak', title: 'Mutfak' }
+  ];
 
   useEffect(() => {
     // rol değiştiğinde uygun ilk menü öğesine geç
@@ -275,6 +257,7 @@ function App({ currentUser }) {
     setHistoryOrder(null);
     setHistoryItems([]);
     setHistoryPayments([]);
+    setTedarikciler([]);
     fetch(selected.path)
       .then(async (res) => {
         if (!res.ok) throw new Error('Sunucudan veri alınamadı');
@@ -391,11 +374,35 @@ function App({ currentUser }) {
     }
   }, [selected]);
 
+  // Çalışanlar / görev tanımları için ayrı yükleme
+  useEffect(() => {
+    if (!selected || selected.key !== 'calisanlar') return;
+    (async () => {
+      setLoading(true);
+      setError('');
+      setSaveMessage('');
+      try {
+        const res = await fetch('/api/gorev-tanimlari');
+        if (!res.ok) throw new Error('Görev tanımları alınamadı');
+        const data = await res.json();
+        setGorevTanimlari(Array.isArray(data) ? data : []);
+      } catch (e) {
+        setError(e.message || 'Görev tanımları yüklenemedi');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [selected]);
+
   useEffect(() => {
     if (!showAdd || !selected) return;
     if (selected.key === 'receteler') {
       // reçete eklerken dropdown seçenekleri hazır olsun
       Promise.allSettled([ensureProductsLoaded(), ensureHammaddelerLoaded()]);
+    }
+    if (selected.key === 'stok-hareketleri') {
+      // stok hareketi eklerken tedarikçi seçenekleri hazır olsun
+      Promise.allSettled([ensureTedarikcilerLoaded()]);
     }
   }, [showAdd, selected]);
 
@@ -460,6 +467,14 @@ function App({ currentUser }) {
     if (!res.ok) throw new Error('Hammaddeler alınamadı');
     const data = await res.json();
     setHammaddeler(Array.isArray(data) ? data : []);
+  };
+
+  const ensureTedarikcilerLoaded = async () => {
+    if (tedarikciler.length > 0) return;
+    const res = await fetch('/api/tedarikciler');
+    if (!res.ok) throw new Error('Tedarikçiler alınamadı');
+    const data = await res.json();
+    setTedarikciler(Array.isArray(data) ? data : []);
   };
 
   const updateOrder = async (orderId, patch) => {
@@ -645,6 +660,31 @@ function App({ currentUser }) {
     }
   };
 
+  const addTask = async (rolId) => {
+    const gorevAdi = (taskDrafts[rolId] || '').toString().trim();
+    if (!gorevAdi) {
+      setSaveMessage('Görev tanımı boş olamaz.');
+      return;
+    }
+    setSaveMessage('');
+    try {
+      const res = await fetch('/api/gorev-tanimlari', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rolId, gorevAdi })
+      });
+      if (!res.ok) throw new Error('Görev eklenemedi');
+      const listRes = await fetch('/api/gorev-tanimlari');
+      if (!listRes.ok) throw new Error('Görev tanımları yenilenemedi');
+      const data = await listRes.json();
+      setGorevTanimlari(Array.isArray(data) ? data : []);
+      setTaskDrafts((prev) => ({ ...prev, [rolId]: '' }));
+      setSaveMessage('Görev eklendi.');
+    } catch (e) {
+      setError(e.message || 'Görev eklenirken hata oluştu');
+    }
+  };
+
   return (
     <div className="layout">
       <aside className="sidebar">
@@ -718,6 +758,19 @@ function App({ currentUser }) {
                       }
                       return f;
                     })
+                  : selected?.key === 'stok-hareketleri'
+                  ? (selected?.fields || []).map((f) => {
+                      if (f.name === 'tedarikciId' && f.control === 'select') {
+                        return {
+                          ...f,
+                          options: tedarikciler.map((t) => ({
+                            value: t.id,
+                            label: t.ad
+                          }))
+                        };
+                      }
+                      return f;
+                    })
                   : selected?.fields || []
               }
               values={formValues}
@@ -739,7 +792,48 @@ function App({ currentUser }) {
           {error && <div className="error">{error}</div>}
           {!loading && !error && (
             <>
-              {selected?.key === 'masalar' ? (
+              {selected?.key === 'calisanlar' ? (
+                <div className="staff-page">
+                  {ROLE_BLOCKS.map((r) => {
+                    const tasks = gorevTanimlari.filter((t) => t.rolId === r.rolId);
+                    return (
+                      <div key={r.rolId} className="staff-role-card">
+                        <div className="staff-role-title">{r.title}</div>
+                        <div className="staff-task-list">
+                          {tasks.length === 0 && (
+                            <div className="staff-task-empty">Henüz görev yok.</div>
+                          )}
+                          {tasks.map((t) => (
+                            <div key={t.id} className="staff-task-row">
+                              {t.gorevAdi}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="staff-add-row">
+                          <input
+                            className="add-input"
+                            value={taskDrafts[r.rolId] ?? ''}
+                            onChange={(e) =>
+                              setTaskDrafts((prev) => ({
+                                ...prev,
+                                [r.rolId]: e.target.value
+                              }))
+                            }
+                            placeholder="Yeni görev tanımı (elle gir)"
+                          />
+                          <button
+                            type="button"
+                            className="primary-btn"
+                            onClick={() => addTask(r.rolId)}
+                          >
+                            Ekle
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : selected?.key === 'masalar' ? (
                 <>
                   <div className="masa-summary">
                     {(() => {

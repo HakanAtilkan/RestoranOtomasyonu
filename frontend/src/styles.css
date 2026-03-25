@@ -566,6 +566,49 @@ tbody tr:hover {
   margin-top: 8px;
 }
 
+.staff-page {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.staff-role-card {
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background-color: #ffffff;
+  padding: 14px;
+}
+
+.staff-role-title {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.staff-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.staff-task-empty {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.staff-task-row {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.staff-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .error {
   color: #b91c1c;
   padding: 8px 12px;
