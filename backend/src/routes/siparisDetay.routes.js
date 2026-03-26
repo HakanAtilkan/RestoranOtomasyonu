@@ -1,5 +1,5 @@
 const express = require('express');
-const { SiparisDetay } = require('../models');
+const { SiparisDetay, OdemeDetay } = require('../models');
 const { getPool } = require('../config/db');
 const { newId } = require('../db/id');
 
@@ -58,6 +58,13 @@ router.delete('/:id', (req, res) => {
     pool = null;
   }
   if (!pool) {
+    const detId = req.params.id;
+    const usedInPayDetails = OdemeDetay.findAll().some((d) => d.siparisDetayId === detId);
+    if (usedInPayDetails) {
+      return res.status(409).json({
+        error: 'Bu sipariş detayı ödeme detaylarında kullanıldığı için silinemez'
+      });
+    }
     const ok = SiparisDetay.remove(req.params.id);
     if (!ok) {
       return res.status(404).json({ error: 'Kayıt bulunamadı' });
@@ -65,13 +72,33 @@ router.delete('/:id', (req, res) => {
     return res.status(204).send();
   }
 
-  pool
-    .query('DELETE FROM siparis_detay WHERE id=?', [req.params.id])
-    .then(([result]) => {
-      if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
-      res.status(204).send();
-    })
-    .catch((e) => res.status(500).json({ error: e.message }));
+  const detId = req.params.id;
+
+  (async () => {
+    // odeme_detay tablosu bazı kurulumlarda olmayabilir; varsa koruyalım.
+    try {
+      const [rows] = await pool.query(
+        'SELECT COUNT(*) as c FROM odeme_detay WHERE siparisDetayId=?',
+        [detId]
+      );
+      const count = Number(rows?.[0]?.c || 0);
+      if (count > 0) {
+        return res.status(409).json({
+          error: 'Bu sipariş detayı ödeme detaylarında kullanıldığı için silinemez'
+        });
+      }
+    } catch {
+      // tablo yoksa devam et
+    }
+
+    pool
+      .query('DELETE FROM siparis_detay WHERE id=?', [detId])
+      .then(([result]) => {
+        if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
+        res.status(204).send();
+      })
+      .catch((e) => res.status(500).json({ error: e.message }));
+  })().catch((e) => res.status(500).json({ error: e.message }));
 });
 
 module.exports = router;

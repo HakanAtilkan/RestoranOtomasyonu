@@ -33,7 +33,7 @@ function EntityTable({ rows, onDelete, onRowClick }) {
   // - "id" kolonu
   // - ...Id ile biten teknik kolonlar (masaId, urunId vb.)
   const visibleColumns = columns.filter(
-    (c) => c !== 'id' && !c.toLowerCase().endsWith('id')
+    (c) => c !== 'id' && c.toLowerCase() !== 'sifre' && !c.toLowerCase().endsWith('id')
   );
   if (visibleColumns.length > 0) {
     columns = visibleColumns;
@@ -68,6 +68,11 @@ function EntityTable({ rows, onDelete, onRowClick }) {
                       className="danger-btn"
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (
+                          !window.confirm('Silmek istediğinize emin misiniz?')
+                        ) {
+                          return;
+                        }
                         onDelete(row.id);
                       }}
                     >

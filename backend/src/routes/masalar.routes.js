@@ -1,5 +1,5 @@
 const express = require('express');
-const { Masalar } = require('../models');
+const { Masalar, Siparisler } = require('../models');
 const { getPool } = require('../config/db');
 const { newId } = require('../db/id');
 
@@ -53,6 +53,13 @@ router.delete('/:id', (req, res) => {
     pool = null;
   }
   if (!pool) {
+    const masaId = req.params.id;
+    const usedInOrders = Siparisler.findAll().some((s) => s.masaId === masaId);
+    if (usedInOrders) {
+      return res.status(409).json({
+        error: 'Bu masa siparişlerde kullanıldığı için silinemez'
+      });
+    }
     const ok = Masalar.remove(req.params.id);
     if (!ok) {
       return res.status(404).json({ error: 'Kayıt bulunamadı' });
@@ -60,11 +67,25 @@ router.delete('/:id', (req, res) => {
     return res.status(204).send();
   }
 
+  const masaId = req.params.id;
+
   pool
-    .query('DELETE FROM masalar WHERE id=?', [req.params.id])
-    .then(([result]) => {
-      if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
-      res.status(204).send();
+    .query('SELECT COUNT(*) as c FROM siparisler WHERE masaId=?', [masaId])
+    .then(([rows]) => {
+      const count = Number(rows?.[0]?.c || 0);
+      if (count > 0) {
+        return res.status(409).json({
+          error: 'Bu masa siparişlerde kullanıldığı için silinemez'
+        });
+      }
+
+      pool
+        .query('DELETE FROM masalar WHERE id=?', [masaId])
+        .then(([result]) => {
+          if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
+          res.status(204).send();
+        })
+        .catch((e) => res.status(500).json({ error: e.message }));
     })
     .catch((e) => res.status(500).json({ error: e.message }));
 });

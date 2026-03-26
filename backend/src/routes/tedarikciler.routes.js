@@ -1,5 +1,5 @@
 const express = require('express');
-const { Tedarikciler } = require('../models');
+const { Tedarikciler, StokHareketleri } = require('../models');
 const { getPool } = require('../config/db');
 const { newId } = require('../db/id');
 
@@ -92,6 +92,13 @@ router.delete('/:id', (req, res) => {
     pool = null;
   }
   if (!pool) {
+    const id = req.params.id;
+    const usedInStock = StokHareketleri.findAll().some((h) => h.tedarikciId === id);
+    if (usedInStock) {
+      return res.status(409).json({
+        error: 'Bu tedarikçi stok hareketlerinde kullanıldığı için silinemez'
+      });
+    }
     const ok = Tedarikciler.remove(req.params.id);
     if (!ok) {
       return res.status(404).json({ error: 'Kayıt bulunamadı' });
@@ -101,7 +108,22 @@ router.delete('/:id', (req, res) => {
 
   const id = req.params.id;
   (async () => {
-    await pool.query('DELETE FROM tedarikci_urunler WHERE tedarikciId=?', [id]);
+    const [stokRows] = await pool.query('SELECT COUNT(*) as c FROM stok_hareketleri WHERE tedarikciId=?', [
+      id
+    ]);
+    const [mapRows] = await pool.query('SELECT COUNT(*) as c FROM tedarikci_urunler WHERE tedarikciId=?', [
+      id
+    ]);
+
+    const stokCount = Number(stokRows?.[0]?.c || 0);
+    const mapCount = Number(mapRows?.[0]?.c || 0);
+
+    if (stokCount > 0 || mapCount > 0) {
+      return res.status(409).json({
+        error: 'Bu tedarikçi başka kayıtlarda kullanıldığı için silinemez'
+      });
+    }
+
     const [result] = await pool.query('DELETE FROM tedarikciler WHERE id=?', [id]);
     if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
     res.status(204).send();

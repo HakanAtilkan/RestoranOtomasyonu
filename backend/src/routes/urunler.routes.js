@@ -1,5 +1,5 @@
 const express = require('express');
-const { Urunler } = require('../models');
+const { Urunler, Receteler, SiparisDetay } = require('../models');
 const { getPool } = require('../config/db');
 const { newId } = require('../db/id');
 
@@ -48,6 +48,14 @@ router.delete('/:id', (req, res) => {
     pool = null;
   }
   if (!pool) {
+    const urunId = req.params.id;
+    const usedInRecipes = Receteler.findAll().some((r) => r.urunId === urunId);
+    const usedInOrderDetails = SiparisDetay.findAll().some((d) => d.urunId === urunId);
+    if (usedInRecipes || usedInOrderDetails) {
+      return res.status(409).json({
+        error: 'Bu ürün başka kayıtlarda kullanıldığı için silinemez'
+      });
+    }
     const ok = Urunler.remove(req.params.id);
     if (!ok) {
       return res.status(404).json({ error: 'Kayıt bulunamadı' });
@@ -55,11 +63,31 @@ router.delete('/:id', (req, res) => {
     return res.status(204).send();
   }
 
-  pool
-    .query('DELETE FROM urunler WHERE id=?', [req.params.id])
-    .then(([result]) => {
-      if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
-      res.status(204).send();
+  const urunId = req.params.id;
+
+  Promise.all([
+    pool.query('SELECT COUNT(*) as c FROM receteler WHERE urunId=?', [urunId]),
+    pool.query('SELECT COUNT(*) as c FROM siparis_detay WHERE urunId=?', [urunId]),
+    pool.query('SELECT COUNT(*) as c FROM tedarikci_urunler WHERE urunId=?', [urunId])
+  ])
+    .then((results) => {
+      const recCount = Number(results[0]?.[0]?.[0]?.c || 0);
+      const detCount = Number(results[1]?.[0]?.[0]?.c || 0);
+      const mapCount = Number(results[2]?.[0]?.[0]?.c || 0);
+
+      if (recCount > 0 || detCount > 0 || mapCount > 0) {
+        return res.status(409).json({
+          error: 'Bu ürün başka kayıtlarda kullanıldığı için silinemez'
+        });
+      }
+
+      pool
+        .query('DELETE FROM urunler WHERE id=?', [urunId])
+        .then(([result]) => {
+          if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
+          res.status(204).send();
+        })
+        .catch((e) => res.status(500).json({ error: e.message }));
     })
     .catch((e) => res.status(500).json({ error: e.message }));
 });

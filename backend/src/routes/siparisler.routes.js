@@ -1,5 +1,5 @@
 const express = require('express');
-const { Siparisler } = require('../models');
+const { Siparisler, SiparisDetay, Odemeler } = require('../models');
 const { getPool } = require('../config/db');
 const { newId } = require('../db/id');
 
@@ -98,6 +98,14 @@ router.delete('/:id', (req, res) => {
     pool = null;
   }
   if (!pool) {
+    const siparisId = req.params.id;
+    const usedInDetails = SiparisDetay.findAll().some((d) => d.siparisId === siparisId);
+    const usedInPayments = Odemeler.findAll().some((o) => o.siparisId === siparisId);
+    if (usedInDetails || usedInPayments) {
+      return res.status(409).json({
+        error: 'Bu sipariş detaylar veya ödemeler nedeniyle silinemez'
+      });
+    }
     const ok = Siparisler.remove(req.params.id);
     if (!ok) {
       return res.status(404).json({ error: 'Kayıt bulunamadı' });
@@ -105,11 +113,29 @@ router.delete('/:id', (req, res) => {
     return res.status(204).send();
   }
 
-  pool
-    .query('DELETE FROM siparisler WHERE id=?', [req.params.id])
-    .then(([result]) => {
-      if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
-      res.status(204).send();
+  const siparisId = req.params.id;
+
+  Promise.all([
+    pool.query('SELECT COUNT(*) as c FROM siparis_detay WHERE siparisId=?', [siparisId]),
+    pool.query('SELECT COUNT(*) as c FROM odemeler WHERE siparisId=?', [siparisId])
+  ])
+    .then((results) => {
+      const detCount = Number(results?.[0]?.[0]?.[0]?.c || 0);
+      const payCount = Number(results?.[1]?.[0]?.[0]?.c || 0);
+
+      if (detCount > 0 || payCount > 0) {
+        return res.status(409).json({
+          error: 'Bu sipariş detaylar veya ödemeler nedeniyle silinemez'
+        });
+      }
+
+      pool
+        .query('DELETE FROM siparisler WHERE id=?', [siparisId])
+        .then(([result]) => {
+          if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
+          res.status(204).send();
+        })
+        .catch((e) => res.status(500).json({ error: e.message }));
     })
     .catch((e) => res.status(500).json({ error: e.message }));
 });

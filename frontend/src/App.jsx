@@ -12,7 +12,12 @@ const ENTITIES = [
         label: 'Roller',
         path: '/api/roller',
         fields: [{ name: 'ad', label: 'Rol Adı' }]
-      },
+      }
+    ]
+  },
+  {
+    group: 'Yönetim',
+    items: [
       {
         key: 'kullanicilar',
         label: 'Kullanıcılar',
@@ -231,6 +236,8 @@ function App({ currentUser }) {
   const [error, setError] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [formValues, setFormValues] = useState({});
+  const [editRow, setEditRow] = useState(null);
+  const [editValues, setEditValues] = useState({});
   const [saveMessage, setSaveMessage] = useState('');
   const [allSiparisler, setAllSiparisler] = useState([]);
   const [selectedMasa, setSelectedMasa] = useState(null);
@@ -272,6 +279,8 @@ function App({ currentUser }) {
     setError('');
     setSaveMessage('');
     setFormValues({});
+    setEditRow(null);
+    setEditValues({});
     setAllSiparisler([]);
     setSelectedMasa(null);
     setActiveOrder(null);
@@ -461,9 +470,17 @@ function App({ currentUser }) {
   const handleDelete = async (id) => {
     if (!selected) return;
     try {
+      setSaveMessage('');
+      setError('');
       const res = await fetch(`${selected.path}/${id}`, { method: 'DELETE' });
       if (!res.ok) {
-        throw new Error('Kayıt silinemedi');
+        const err = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          setSaveMessage(err.error || 'Bu kayıt silinemez.');
+          setError('');
+          return;
+        }
+        throw new Error(err.error || 'Kayıt silinemedi');
       }
       // listeyi yenile
       const listRes = await fetch(selected.path);
@@ -472,6 +489,52 @@ function App({ currentUser }) {
       setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       setError(e.message || 'Silme sırasında hata oluştu');
+    }
+  };
+
+  const handleEditUser = (row) => {
+    if (!selected || selected.key !== 'kullanicilar') return;
+    setEditRow(row);
+    setEditValues((prev) => ({
+      ...prev,
+      ...row
+    }));
+    setShowAdd(false);
+    setSaveMessage('');
+    setError('');
+  };
+
+  const handleUpdateUser = async () => {
+    if (!selected || selected.key !== 'kullanicilar' || !editRow) return;
+
+    const fields = selected.fields || [];
+    const body = {};
+    for (const f of fields) body[f.name] = editValues?.[f.name];
+
+    setSaveMessage('');
+    try {
+      const res = await fetch(`${selected.path}/${editRow.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error('Kullanıcı güncellenemedi');
+
+      setSaveMessage('Kullanıcı güncellendi.');
+      setEditRow(null);
+      setEditValues({});
+
+      // listeyi yenile
+      setLoading(true);
+      setError('');
+      const listRes = await fetch(selected.path);
+      if (!listRes.ok) throw new Error('Liste yenilenemedi');
+      const data = await listRes.json();
+      setRows(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setSaveMessage(e.message || 'Bir hata oluştu.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -817,8 +880,31 @@ function App({ currentUser }) {
               saveMessage={saveMessage}
             />
           )}
+          {editRow && selected?.key === 'kullanicilar' && (
+            <EntityForm
+              title="Kullanıcı Düzenle"
+              fields={selected?.fields || []}
+              values={editValues}
+              onChange={(name, value) =>
+                setEditValues((prev) => ({
+                  ...prev,
+                  [name]: value
+                }))
+              }
+              onSubmit={handleUpdateUser}
+              onCancel={() => {
+                setEditRow(null);
+                setEditValues({});
+                setSaveMessage('');
+              }}
+              saveMessage={saveMessage}
+            />
+          )}
           {loading && <div>Yükleniyor...</div>}
           {error && <div className="error">{error}</div>}
+          {!loading && !error && saveMessage && selected?.key !== 'masalar' && (
+            <div className="save-message">{saveMessage}</div>
+          )}
           {!loading && !error && (
             <>
               {selected?.key === 'calisanlar' ? (
@@ -842,11 +928,27 @@ function App({ currentUser }) {
                                 className="danger-btn staff-delete-btn"
                                 onClick={async () => {
                                   try {
+                                    setSaveMessage('');
+                                    setError('');
+                                    const ok = window.confirm(
+                                      'Silmek istediğinize emin misiniz?'
+                                    );
+                                    if (!ok) return;
                                     const delRes = await fetch(
                                       `/api/calisanlar/${t.id}`,
                                       { method: 'DELETE' }
                                     );
-                                    if (!delRes.ok) throw new Error('Silme başarısız');
+                                    if (!delRes.ok) {
+                                      const err = await delRes.json().catch(() => ({}));
+                                      if (delRes.status === 409) {
+                                        setSaveMessage(
+                                          err.error || 'Bu kayıt silinemez.'
+                                        );
+                                        setError('');
+                                        return;
+                                      }
+                                      throw new Error(err.error || 'Silme başarısız');
+                                    }
                                     const listRes = await fetch('/api/calisanlar');
                                     const data = await listRes.json();
                                     setCalisanlar(Array.isArray(data) ? data : []);
@@ -1141,7 +1243,13 @@ function App({ currentUser }) {
                     <EntityTable
                       rows={rows}
                       onDelete={handleDelete}
-                      onRowClick={selected?.key === 'siparisler' ? handleHistoryClick : undefined}
+                      onRowClick={
+                        selected?.key === 'siparisler'
+                          ? handleHistoryClick
+                          : selected?.key === 'kullanicilar'
+                          ? handleEditUser
+                          : undefined
+                      }
                     />
                   )}
                   {selected?.key === 'siparisler' && historyOrder && (
