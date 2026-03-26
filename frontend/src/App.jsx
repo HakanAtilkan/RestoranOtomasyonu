@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import SidebarTree from './components/SidebarTree';
 import EntityTable from './components/EntityTable';
 import EntityForm from './components/EntityForm';
+import RecipeForm from './components/RecipeForm';
 
 const ENTITIES = [
   {
@@ -167,7 +168,7 @@ const ENTITIES = [
         fields: [
           // Ürün adı artık serbest metin, select değil
           { name: 'urunId', label: 'Ürün Adı' },
-          { name: 'hammaddeId', label: 'Hammadde', control: 'select', placeholder: 'Hammadde seçin' },
+          { name: 'hammaddeId', label: 'Hammadde', placeholder: 'Hammadde adı (id değil)' },
           { name: 'miktar', label: 'Gramaj (gr)', type: 'number', placeholder: 'örn. 120' }
         ]
       },
@@ -462,6 +463,69 @@ function App({ currentUser }) {
       setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       setSaveMessage(e.message || 'Bir hata oluştu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateReceteler = async ({ urunId, ingredients }) => {
+    setSaveMessage('');
+    setError('');
+    try {
+      const postList = (ingredients || []).map((ing) =>
+        fetch('/api/receteler', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            urunId,
+            hammaddeId: ing.hammaddeAdi,
+            miktar: ing.miktar
+          })
+        }).then(async (r) => {
+          if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            throw new Error(err.error || 'Reçete eklenemedi');
+          }
+          return r.json();
+        })
+      );
+
+      await Promise.all(postList);
+
+      // Listeyi yenile + urun/hammadde join
+      setLoading(true);
+      setShowAdd(false);
+
+      const [recRes, urunRes, hamRes] = await Promise.all([
+        fetch('/api/receteler'),
+        fetch('/api/urunler'),
+        fetch('/api/hammaddeler')
+      ]);
+
+      if (!recRes.ok) throw new Error('Reçeteler yenilenemedi');
+      const [recData, urunData, hamData] = await Promise.all([
+        recRes.json(),
+        urunRes.ok ? urunRes.json() : Promise.resolve([]),
+        hamRes.ok ? hamRes.json() : Promise.resolve([])
+      ]);
+
+      const urunMap = new Map(
+        (Array.isArray(urunData) ? urunData : []).map((u) => [u.id, u.ad])
+      );
+      const hamMap = new Map(
+        (Array.isArray(hamData) ? hamData : []).map((h) => [h.id, h.ad])
+      );
+
+      const enriched = (Array.isArray(recData) ? recData : []).map((r) => ({
+        ...r,
+        urun: urunMap.get(r.urunId) || r.urunId,
+        hammadde: hamMap.get(r.hammaddeId) || r.hammaddeId
+      }));
+
+      setRows(enriched);
+      setSaveMessage('Reçete eklendi.');
+    } catch (e) {
+      setSaveMessage(e.message || 'Reçete eklenemedi');
     } finally {
       setLoading(false);
     }
@@ -830,55 +894,52 @@ function App({ currentUser }) {
           ) : null}
         </header>
         <section className="content-body">
-          {showAdd && (
-            <EntityForm
-              title={`Yeni ${selected?.label} Kaydı`}
-              fields={
-                selected?.key === 'receteler'
-                  ? (selected?.fields || []).map((f) => {
-                      if (f.name === 'urunId' && f.control === 'select') {
-                        return {
-                          ...f,
-                          options: products.map((p) => ({ value: p.id, label: p.ad }))
-                        };
-                      }
-                      if (f.name === 'hammaddeId' && f.control === 'select') {
-                        return {
-                          ...f,
-                          options: hammaddeler.map((h) => ({ value: h.id, label: h.ad }))
-                        };
-                      }
-                      return f;
-                    })
-                  : selected?.key === 'stok-hareketleri'
-                  ? (selected?.fields || []).map((f) => {
-                      if (f.name === 'tedarikciId' && f.control === 'select') {
-                        return {
-                          ...f,
-                          options: tedarikciler.map((t) => ({
-                            value: t.id,
-                            label: t.ad
-                          }))
-                        };
-                      }
-                      return f;
-                    })
-                  : selected?.fields || []
-              }
-              values={formValues}
-              onChange={(name, value) =>
-                setFormValues((prev) => ({
-                  ...prev,
-                  [name]: value
-                }))
-              }
-              onSubmit={handleCreate}
+          {showAdd && selected?.key === 'receteler' ? (
+            <RecipeForm
+              onSubmit={handleCreateReceteler}
               onCancel={() => {
                 setShowAdd(false);
                 setSaveMessage('');
               }}
-              saveMessage={saveMessage}
+              errorMessage={null}
             />
+          ) : (
+            showAdd && (
+              <EntityForm
+                title={`Yeni ${selected?.label} Kaydı`}
+                fields={
+                  selected?.key === 'receteler'
+                    ? []
+                    : selected?.key === 'stok-hareketleri'
+                    ? (selected?.fields || []).map((f) => {
+                        if (f.name === 'tedarikciId' && f.control === 'select') {
+                          return {
+                            ...f,
+                            options: tedarikciler.map((t) => ({
+                              value: t.id,
+                              label: t.ad
+                            }))
+                          };
+                        }
+                        return f;
+                      })
+                    : selected?.fields || []
+                }
+                values={formValues}
+                onChange={(name, value) =>
+                  setFormValues((prev) => ({
+                    ...prev,
+                    [name]: value
+                  }))
+                }
+                onSubmit={handleCreate}
+                onCancel={() => {
+                  setShowAdd(false);
+                  setSaveMessage('');
+                }}
+                saveMessage={saveMessage}
+              />
+            )
           )}
           {editRow && selected?.key === 'kullanicilar' && (
             <EntityForm
