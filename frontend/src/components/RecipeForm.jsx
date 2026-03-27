@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 
-function RecipeForm({ initialUrunAdi = '', onSubmit, onCancel, errorMessage }) {
+function RecipeForm({ hammaddeler = [], initialUrunAdi = '', onSubmit, onCancel, errorMessage }) {
   const [urunAdi, setUrunAdi] = useState(initialUrunAdi);
   const [ingredients, setIngredients] = useState([
-    { hammaddeAdi: '', miktar: '' }
+    { hammaddeId: '', miktar: '' }
   ]);
 
   const canAddMore = ingredients.length < 20;
@@ -22,7 +22,7 @@ function RecipeForm({ initialUrunAdi = '', onSubmit, onCancel, errorMessage }) {
     const u = String(urunAdi || '').trim();
     if (!u) return false;
     return ingredients.every((it) => {
-      const h = String(it.hammaddeAdi || '').trim();
+      const h = String(it.hammaddeId || '').trim();
       if (!h) return false;
       const m = Number(it.miktar);
       return !Number.isNaN(m) && m > 0;
@@ -34,7 +34,7 @@ function RecipeForm({ initialUrunAdi = '', onSubmit, onCancel, errorMessage }) {
     const payload = {
       urunId: urunAdi,
       ingredients: ingredients.map((it) => ({
-        hammaddeAdi: String(it.hammaddeAdi).trim(),
+        hammaddeId: String(it.hammaddeId).trim(),
         miktar: Number(it.miktar) || 0
       }))
     };
@@ -64,12 +64,18 @@ function RecipeForm({ initialUrunAdi = '', onSubmit, onCancel, errorMessage }) {
         {ingredients.map((it, idx) => (
           <div key={idx} className="recipe-row">
             <div className="recipe-col">
-              <input
+              <select
                 className="add-input"
-                value={it.hammaddeAdi}
-                onChange={(e) => updateIngredient(idx, { hammaddeAdi: e.target.value })}
-                placeholder="Hammadde adı"
-              />
+                value={it.hammaddeId}
+                onChange={(e) => updateIngredient(idx, { hammaddeId: e.target.value })}
+              >
+                <option value="">Hammadde seçin</option>
+                {hammaddeler.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.ad}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="recipe-col" style={{ maxWidth: 140 }}>
               <input
@@ -78,7 +84,7 @@ function RecipeForm({ initialUrunAdi = '', onSubmit, onCancel, errorMessage }) {
                 min="1"
                 value={it.miktar}
                 onChange={(e) => updateIngredient(idx, { miktar: e.target.value })}
-                placeholder="Gramaj (gr)"
+                placeholder="Miktar"
               />
             </div>
             <div className="recipe-col recipe-actions">
@@ -100,7 +106,10 @@ function RecipeForm({ initialUrunAdi = '', onSubmit, onCancel, errorMessage }) {
             className="ghost-btn"
             onClick={() =>
               canAddMore &&
-              setIngredients((prev) => [...prev, { hammaddeAdi: '', miktar: '' }])
+              setIngredients((prev) => [
+                ...prev,
+                { hammaddeId: '', miktar: '' }
+              ])
             }
             disabled={!canAddMore}
           >

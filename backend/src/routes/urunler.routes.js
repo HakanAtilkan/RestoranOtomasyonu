@@ -40,6 +40,37 @@ router.post('/', (req, res) => {
     .catch((e) => res.status(500).json({ error: e.message }));
 });
 
+router.put('/:id', (req, res) => {
+  let pool;
+  try {
+    pool = getPool();
+  } catch {
+    pool = null;
+  }
+
+  const id = req.params.id;
+  const { ad, fiyat } = req.body || {};
+  const name = (ad || '').toString().trim();
+  const price = Number(fiyat) || 0;
+
+  if (!id) return res.status(400).json({ error: 'id zorunlu' });
+  if (!name) return res.status(400).json({ error: 'ad zorunlu' });
+
+  if (!pool) {
+    const updated = Urunler.update(id, { ad: name, fiyat: price });
+    if (!updated) return res.status(404).json({ error: 'Kayıt bulunamadı' });
+    return res.json(updated);
+  }
+
+  pool
+    .query('UPDATE urunler SET ad=?, fiyat=? WHERE id=?', [name, price, id])
+    .then(([result]) => {
+      if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
+      return res.json({ id, ad: name, fiyat: price });
+    })
+    .catch((e) => res.status(500).json({ error: e.message }));
+});
+
 router.delete('/:id', (req, res) => {
   let pool;
   try {

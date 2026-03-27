@@ -146,13 +146,14 @@ body {
   margin: 2px 4px;
   border-radius: 8px;
   font-size: 0.9rem;
-  color: #e5e7eb;
+  color: #111827;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
 }
 
 .tree-item:hover {
   background-color: #f3f4f6;
+  color: #111827;
   transform: translateX(1px);
 }
 
@@ -466,6 +467,27 @@ tbody tr:hover {
 
 .order-item-total {
   font-weight: 600;
+}
+
+.pay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pay-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background-color: #ffffff;
+}
+
+.pay-left {
+  min-width: 0;
 }
 
 .order-summary {

@@ -116,6 +116,19 @@ async function initDb() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS odeme_detay (
+      id VARCHAR(64) PRIMARY KEY,
+      odemeId VARCHAR(64) NOT NULL,
+      siparisDetayId VARCHAR(64) NOT NULL,
+      adet INT DEFAULT 1,
+      tutar DOUBLE DEFAULT 0,
+      odemeTuru VARCHAR(32),
+      INDEX (odemeId),
+      INDEX (siparisDetayId)
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS gorev_tanimlari (
       id VARCHAR(64) PRIMARY KEY,
       rolId VARCHAR(64) NOT NULL,

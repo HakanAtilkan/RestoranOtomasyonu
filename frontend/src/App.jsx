@@ -20,6 +20,15 @@ const ENTITIES = [
     group: 'Yönetim',
     items: [
       {
+        key: 'urunler',
+        label: 'Ürünler',
+        path: '/api/urunler',
+        fields: [
+          { name: 'ad', label: 'Ürün Adı' },
+          { name: 'fiyat', label: 'Fiyat (₺)', type: 'number', placeholder: 'örn. 150' }
+        ]
+      },
+      {
         key: 'kullanicilar',
         label: 'Kullanıcılar',
         path: '/api/kullanicilar',
@@ -239,6 +248,10 @@ function App({ currentUser }) {
   const [formValues, setFormValues] = useState({});
   const [editRow, setEditRow] = useState(null);
   const [editValues, setEditValues] = useState({});
+  const [editRecipeRow, setEditRecipeRow] = useState(null);
+  const [editRecipeValues, setEditRecipeValues] = useState({});
+  const [editProductRow, setEditProductRow] = useState(null);
+  const [editProductValues, setEditProductValues] = useState({});
   const [saveMessage, setSaveMessage] = useState('');
   const [allSiparisler, setAllSiparisler] = useState([]);
   const [selectedMasa, setSelectedMasa] = useState(null);
@@ -247,6 +260,7 @@ function App({ currentUser }) {
   const [products, setProducts] = useState([]);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [payDrafts, setPayDrafts] = useState({});
   const [historyOrder, setHistoryOrder] = useState(null);
   const [historyItems, setHistoryItems] = useState([]);
   const [historyPayments, setHistoryPayments] = useState([]);
@@ -282,6 +296,11 @@ function App({ currentUser }) {
     setFormValues({});
     setEditRow(null);
     setEditValues({});
+    setEditRecipeRow(null);
+    setEditRecipeValues({});
+    setEditProductRow(null);
+    setEditProductValues({});
+    setPayDrafts({});
     setAllSiparisler([]);
     setSelectedMasa(null);
     setActiveOrder(null);
@@ -373,12 +392,16 @@ function App({ currentUser }) {
                 (Array.isArray(urunData) ? urunData : []).map((u) => [u.id, u.ad])
               );
               const hamMap = new Map(
-                (Array.isArray(hamData) ? hamData : []).map((h) => [h.id, h.ad])
+                (Array.isArray(hamData) ? hamData : []).map((h) => [
+                  h.id,
+                  { ad: h.ad, birim: h.birim }
+                ])
               );
               rowsData = rowsData.map((r) => ({
                 ...r,
                 urun: urunMap.get(r.urunId) || r.urunId,
-                hammadde: hamMap.get(r.hammaddeId) || r.hammaddeId
+                hammadde: hamMap.get(r.hammaddeId)?.ad || r.hammaddeId,
+                birim: hamMap.get(r.hammaddeId)?.birim || ''
               }));
             }
           } catch {
@@ -478,7 +501,7 @@ function App({ currentUser }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             urunId,
-            hammaddeId: ing.hammaddeAdi,
+            hammaddeId: ing.hammaddeId,
             miktar: ing.miktar
           })
         }).then(async (r) => {
@@ -568,6 +591,139 @@ function App({ currentUser }) {
     setError('');
   };
 
+  const handleEditRecipe = async (row) => {
+    if (!selected || selected.key !== 'receteler') return;
+    setShowAdd(false);
+    setEditRow(null);
+    setEditValues({});
+    setSaveMessage('');
+    setError('');
+    try {
+      await ensureHammaddelerLoaded();
+    } catch {
+      // seçenekler yüklenemezse yine de edit aç
+    }
+    setEditRecipeRow(row);
+    setEditRecipeValues({
+      id: row.id,
+      urunId: row.urunId,
+      hammaddeId: row.hammaddeId,
+      miktar: row.miktar
+    });
+  };
+
+  const handleUpdateRecipe = async () => {
+    if (!selected || selected.key !== 'receteler' || !editRecipeRow) return;
+    setSaveMessage('');
+    setError('');
+    try {
+      const res = await fetch(`/api/receteler/${editRecipeRow.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          urunId: editRecipeValues.urunId,
+          hammaddeId: editRecipeValues.hammaddeId,
+          miktar: editRecipeValues.miktar
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Reçete güncellenemedi');
+      }
+      await res.json();
+
+      setSaveMessage('Reçete güncellendi.');
+      setEditRecipeRow(null);
+      setEditRecipeValues({});
+
+      // Listeyi yenile (join dahil)
+      setLoading(true);
+      const [recRes, urunRes, hamRes] = await Promise.all([
+        fetch('/api/receteler'),
+        fetch('/api/urunler'),
+        fetch('/api/hammaddeler')
+      ]);
+      if (!recRes.ok) throw new Error('Reçeteler yenilenemedi');
+      const [recData, urunData, hamData] = await Promise.all([
+        recRes.json(),
+        urunRes.ok ? urunRes.json() : Promise.resolve([]),
+        hamRes.ok ? hamRes.json() : Promise.resolve([])
+      ]);
+      const urunMap = new Map(
+        (Array.isArray(urunData) ? urunData : []).map((u) => [u.id, u.ad])
+      );
+      const hamMap = new Map(
+        (Array.isArray(hamData) ? hamData : []).map((h) => [
+          h.id,
+          { ad: h.ad, birim: h.birim }
+        ])
+      );
+      const enriched = (Array.isArray(recData) ? recData : []).map((r) => ({
+        ...r,
+        urun: urunMap.get(r.urunId) || r.urunId,
+        hammadde: hamMap.get(r.hammaddeId)?.ad || r.hammaddeId,
+        birim: hamMap.get(r.hammaddeId)?.birim || ''
+      }));
+      setRows(enriched);
+    } catch (e) {
+      setSaveMessage(e.message || 'Reçete güncellenemedi');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditProduct = (row) => {
+    if (!selected || selected.key !== 'urunler') return;
+    setShowAdd(false);
+    setEditRow(null);
+    setEditValues({});
+    setEditRecipeRow(null);
+    setEditRecipeValues({});
+    setSaveMessage('');
+    setError('');
+    setEditProductRow(row);
+    setEditProductValues({
+      id: row.id,
+      ad: row.ad,
+      fiyat: row.fiyat
+    });
+  };
+
+  const handleUpdateProduct = async () => {
+    if (!selected || selected.key !== 'urunler' || !editProductRow) return;
+    setSaveMessage('');
+    setError('');
+    try {
+      const res = await fetch(`/api/urunler/${editProductRow.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ad: editProductValues.ad,
+          fiyat: editProductValues.fiyat
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Ürün güncellenemedi');
+      }
+      await res.json();
+      setSaveMessage('Ürün güncellendi.');
+      setEditProductRow(null);
+      setEditProductValues({});
+
+      // listeyi yenile
+      setLoading(true);
+      const listRes = await fetch('/api/urunler');
+      if (!listRes.ok) throw new Error('Liste yenilenemedi');
+      const data = await listRes.json();
+      setRows(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setSaveMessage(e.message || 'Ürün güncellenemedi');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpdateUser = async () => {
     if (!selected || selected.key !== 'kullanicilar' || !editRow) return;
 
@@ -651,17 +807,94 @@ function App({ currentUser }) {
     const items = (Array.isArray(detData) ? detData : []).filter(
       (d) => d.siparisId === siparisId
     );
+
+    // odeme detaylari (urun bazli odemeler)
+    let paidMap = new Map();
+    try {
+      const payDetRes = await fetch('/api/odeme-detay');
+      if (payDetRes.ok) {
+        const payDetData = await payDetRes.json();
+        const list = Array.isArray(payDetData) ? payDetData : [];
+        for (const p of list) {
+          const key = p.siparisDetayId;
+          const adet = Number(p.adet) || 0;
+          if (!key) continue;
+          paidMap.set(key, (paidMap.get(key) || 0) + adet);
+        }
+      }
+    } catch {
+      // opsiyonel
+    }
+
     const map = new Map(products.map((p) => [p.id, p]));
     const enriched = items.map((it) => {
       const p = map.get(it.urunId);
+      const paidAdet = paidMap.get(it.id) || 0;
+      const kalanAdet = Math.max(0, (Number(it.adet) || 0) - paidAdet);
       return {
         ...it,
         urunAd: p?.ad || it.urunId,
         birimFiyat: it.birimFiyat ?? p?.fiyat ?? 0,
-        araToplam: it.araToplam ?? (it.adet || 0) * (p?.fiyat ?? 0)
+        araToplam: it.araToplam ?? (it.adet || 0) * (p?.fiyat ?? 0),
+        paidAdet,
+        kalanAdet
       };
     });
     setOrderItems(enriched);
+  };
+
+  const handleSplitPay = async () => {
+    if (!activeOrder) return;
+    setSaveMessage('');
+    setError('');
+
+    const items = orderItems
+      .map((it) => ({
+        siparisDetayId: it.id,
+        adet: Number(payDrafts[it.id]) || 0,
+        kalanAdet: Number(it.kalanAdet) || 0
+      }))
+      .filter((x) => x.adet > 0);
+
+    if (items.length === 0) {
+      setSaveMessage('Ödenecek ürün seçin.');
+      return;
+    }
+
+    const over = items.find((x) => x.adet > x.kalanAdet);
+    if (over) {
+      setSaveMessage('Seçilen adet, kalan adetten fazla olamaz.');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/odemeler/split', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          siparisId: activeOrder.id,
+          odemeTuru: 'nakit',
+          items: items.map((x) => ({ siparisDetayId: x.siparisDetayId, adet: x.adet }))
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        if (res.status === 409) {
+          setSaveMessage(err.error || 'Bu ödeme yapılamadı.');
+          setError('');
+          return;
+        }
+        throw new Error(err.error || 'Ödeme alınamadı');
+      }
+      await res.json();
+
+      setSaveMessage('Ödeme alındı.');
+      setPayDrafts({});
+      await loadOrderItems(activeOrder.id);
+      await refreshSiparisler();
+    } catch (e) {
+      setSaveMessage(e.message || 'Ödeme alınamadı');
+    }
   };
 
   const handleMasaClick = async (masa) => {
@@ -729,6 +962,8 @@ function App({ currentUser }) {
       if (!res.ok) throw new Error('Ürün eklenemedi');
       await res.json();
       await loadOrderItems(activeOrder.id);
+      setSelectedProductId('');
+      setSelectedQuantity(1);
 
       // sipariş toplamını güncelle
       const detRes = await fetch('/api/siparis-detay');
@@ -896,6 +1131,7 @@ function App({ currentUser }) {
         <section className="content-body">
           {showAdd && selected?.key === 'receteler' ? (
             <RecipeForm
+              hammaddeler={hammaddeler}
               onSubmit={handleCreateReceteler}
               onCancel={() => {
                 setShowAdd(false);
@@ -956,6 +1192,59 @@ function App({ currentUser }) {
               onCancel={() => {
                 setEditRow(null);
                 setEditValues({});
+                setSaveMessage('');
+              }}
+              saveMessage={saveMessage}
+            />
+          )}
+          {editRecipeRow && selected?.key === 'receteler' && (
+            <EntityForm
+              title="Reçete Düzenle"
+              fields={[
+                { name: 'urunId', label: 'Ürün Adı' },
+                {
+                  name: 'hammaddeId',
+                  label: 'Hammadde',
+                  control: 'select',
+                  placeholder: 'Hammadde seçin',
+                  options: hammaddeler.map((h) => ({ value: h.id, label: h.ad }))
+                },
+                { name: 'miktar', label: 'Miktar', type: 'number' }
+              ]}
+              values={editRecipeValues}
+              onChange={(name, value) =>
+                setEditRecipeValues((prev) => ({
+                  ...prev,
+                  [name]: value
+                }))
+              }
+              onSubmit={handleUpdateRecipe}
+              onCancel={() => {
+                setEditRecipeRow(null);
+                setEditRecipeValues({});
+                setSaveMessage('');
+              }}
+              saveMessage={saveMessage}
+            />
+          )}
+          {editProductRow && selected?.key === 'urunler' && (
+            <EntityForm
+              title="Ürün Düzenle"
+              fields={[
+                { name: 'ad', label: 'Ürün Adı' },
+                { name: 'fiyat', label: 'Fiyat (₺)', type: 'number' }
+              ]}
+              values={editProductValues}
+              onChange={(name, value) =>
+                setEditProductValues((prev) => ({
+                  ...prev,
+                  [name]: value
+                }))
+              }
+              onSubmit={handleUpdateProduct}
+              onCancel={() => {
+                setEditProductRow(null);
+                setEditProductValues({});
                 setSaveMessage('');
               }}
               saveMessage={saveMessage}
@@ -1226,6 +1515,11 @@ function App({ currentUser }) {
                                 <div className="order-item-sub">
                                   {it.adet} x ₺{it.birimFiyat}
                                 </div>
+                                {Number(it.paidAdet) > 0 && (
+                                  <div className="order-item-sub">
+                                    Ödendi: {it.paidAdet} • Kalan: {it.kalanAdet}
+                                  </div>
+                                )}
                               </div>
                               <div className="order-item-total">₺{it.araToplam}</div>
                             </div>
@@ -1234,6 +1528,57 @@ function App({ currentUser }) {
                             <div>Bu masa için henüz ürün eklenmemiş.</div>
                           )}
                         </div>
+                      </div>
+                      <div className="order-products" style={{ marginTop: 12 }}>
+                        <h3>Ürün Bazlı Ödeme</h3>
+                        {orderItems.length === 0 ? (
+                          <div>Ödeme alınacak ürün yok.</div>
+                        ) : (
+                          <div className="pay-list">
+                            {orderItems.map((it) => (
+                              <div key={it.id} className="pay-row">
+                                <div className="pay-left">
+                                  <div className="order-item-name">{it.urunAd}</div>
+                                  <div className="order-item-sub">
+                                    Kalan: {it.kalanAdet} • Birim: ₺{it.birimFiyat}
+                                  </div>
+                                </div>
+                                <input
+                                  className="add-input"
+                                  type="number"
+                                  min="0"
+                                  max={it.kalanAdet}
+                                  value={payDrafts[it.id] ?? ''}
+                                  onChange={(e) =>
+                                    setPayDrafts((prev) => ({
+                                      ...prev,
+                                      [it.id]: e.target.value
+                                    }))
+                                  }
+                                  placeholder="Adet"
+                                  style={{ maxWidth: 90 }}
+                                  disabled={Number(it.kalanAdet) <= 0}
+                                />
+                              </div>
+                            ))}
+                            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                              <button
+                                type="button"
+                                className="primary-btn"
+                                onClick={handleSplitPay}
+                              >
+                                Seçilenleri Öde
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost-btn"
+                                onClick={() => setPayDrafts({})}
+                              >
+                                Temizle
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="order-summary">
                         <div className="order-summary-line">
@@ -1309,6 +1654,10 @@ function App({ currentUser }) {
                           ? handleHistoryClick
                           : selected?.key === 'kullanicilar'
                           ? handleEditUser
+                          : selected?.key === 'receteler'
+                          ? handleEditRecipe
+                          : selected?.key === 'urunler'
+                          ? handleEditProduct
                           : undefined
                       }
                     />

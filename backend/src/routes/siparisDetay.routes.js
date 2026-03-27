@@ -36,18 +36,64 @@ router.post('/', (req, res) => {
   };
 
   if (!pool) {
+    // Aynı siparişte aynı ürün varsa adet/aratoplamı artır (tek satır kalsın).
+    const existing = SiparisDetay.findAll().find(
+      (d) => d.siparisId === payload.siparisId && d.urunId === payload.urunId
+    );
+    if (existing?.id) {
+      const yeniAdet = (Number(existing.adet) || 0) + payload.adet;
+      const yeniAraToplam =
+        (Number(existing.araToplam) || 0) + (payload.araToplam || 0);
+      const updated = SiparisDetay.update(existing.id, {
+        adet: yeniAdet,
+        birimFiyat: payload.birimFiyat,
+        araToplam: yeniAraToplam
+      });
+      return res.status(200).json(updated);
+    }
+
     const created = SiparisDetay.create(payload);
     return res.status(201).json(created);
   }
 
-  const id = newId();
-  pool
-    .query(
+  (async () => {
+    const [rows] = await pool.query(
+      'SELECT id, adet, araToplam FROM siparis_detay WHERE siparisId=? AND urunId=? LIMIT 1',
+      [payload.siparisId, payload.urunId]
+    );
+    const existing = rows?.[0];
+    if (existing?.id) {
+      const yeniAdet = (Number(existing.adet) || 0) + payload.adet;
+      const yeniAraToplam =
+        (Number(existing.araToplam) || 0) + (payload.araToplam || 0);
+      await pool.query(
+        'UPDATE siparis_detay SET adet=?, birimFiyat=?, araToplam=? WHERE id=?',
+        [yeniAdet, payload.birimFiyat, yeniAraToplam, existing.id]
+      );
+      return res.status(200).json({
+        id: existing.id,
+        siparisId: payload.siparisId,
+        urunId: payload.urunId,
+        adet: yeniAdet,
+        birimFiyat: payload.birimFiyat,
+        araToplam: yeniAraToplam
+      });
+    }
+
+    const id = newId();
+    await pool.query(
       'INSERT INTO siparis_detay (id, siparisId, urunId, adet, birimFiyat, araToplam) VALUES (?,?,?,?,?,?)',
-      [id, payload.siparisId, payload.urunId, payload.adet, payload.birimFiyat, payload.araToplam]
-    )
-    .then(() => res.status(201).json({ id, ...payload }))
-    .catch((e) => res.status(500).json({ error: e.message }));
+      [
+        id,
+        payload.siparisId,
+        payload.urunId,
+        payload.adet,
+        payload.birimFiyat,
+        payload.araToplam
+      ]
+    );
+    return res.status(201).json({ id, ...payload });
+  })().catch((e) => res.status(500).json({ error: e.message }));
 });
 
 router.delete('/:id', (req, res) => {
