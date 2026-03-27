@@ -45,6 +45,46 @@ router.post('/', (req, res) => {
     .catch((e) => res.status(500).json({ error: e.message }));
 });
 
+router.put('/:id', (req, res) => {
+  let pool;
+  try {
+    pool = getPool();
+  } catch {
+    pool = null;
+  }
+
+  const id = req.params.id;
+  const payload = req.body || {};
+  const ad = (payload.ad || '').toString().trim();
+  const kapasite =
+    payload.kapasite === undefined || payload.kapasite === null
+      ? null
+      : Number(payload.kapasite);
+  const rezerveDurum = (payload.rezerveDurum || '').toString().trim() || null;
+  const rezervasyonTarihi =
+    (payload.rezervasyonTarihi || '').toString().trim() || null;
+
+  if (!id) return res.status(400).json({ error: 'id zorunlu' });
+  if (!ad) return res.status(400).json({ error: 'ad zorunlu' });
+
+  if (!pool) {
+    const updated = Masalar.update(id, { ad, kapasite, rezerveDurum, rezervasyonTarihi });
+    if (!updated) return res.status(404).json({ error: 'Kayıt bulunamadı' });
+    return res.json(updated);
+  }
+
+  pool
+    .query(
+      'UPDATE masalar SET ad=?, kapasite=?, rezerveDurum=?, rezervasyonTarihi=? WHERE id=?',
+      [ad, Number.isNaN(kapasite) ? null : kapasite, rezerveDurum, rezervasyonTarihi, id]
+    )
+    .then(([result]) => {
+      if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
+      return res.json({ id, ad, kapasite: Number.isNaN(kapasite) ? null : kapasite, rezerveDurum, rezervasyonTarihi });
+    })
+    .catch((e) => res.status(500).json({ error: e.message }));
+});
+
 router.delete('/:id', (req, res) => {
   let pool;
   try {

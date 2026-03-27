@@ -266,6 +266,7 @@ function App({ currentUser }) {
   const [historyPayments, setHistoryPayments] = useState([]);
   const [hammaddeler, setHammaddeler] = useState([]);
   const [tedarikciler, setTedarikciler] = useState([]);
+  const [masaAdDraft, setMasaAdDraft] = useState('');
 
   // Masalar ekranında kartları ad (masa no) numarasina gore siralamak icin.
   // Not: Tüm ekranlarda calistigindan dolayi ad olmayan kayitlarda 0 kabul ediyoruz.
@@ -518,33 +519,7 @@ function App({ currentUser }) {
       // Listeyi yenile + urun/hammadde join
       setLoading(true);
       setShowAdd(false);
-
-      const [recRes, urunRes, hamRes] = await Promise.all([
-        fetch('/api/receteler'),
-        fetch('/api/urunler'),
-        fetch('/api/hammaddeler')
-      ]);
-
-      if (!recRes.ok) throw new Error('Reçeteler yenilenemedi');
-      const [recData, urunData, hamData] = await Promise.all([
-        recRes.json(),
-        urunRes.ok ? urunRes.json() : Promise.resolve([]),
-        hamRes.ok ? hamRes.json() : Promise.resolve([])
-      ]);
-
-      const urunMap = new Map(
-        (Array.isArray(urunData) ? urunData : []).map((u) => [u.id, u.ad])
-      );
-      const hamMap = new Map(
-        (Array.isArray(hamData) ? hamData : []).map((h) => [h.id, h.ad])
-      );
-
-      const enriched = (Array.isArray(recData) ? recData : []).map((r) => ({
-        ...r,
-        urun: urunMap.get(r.urunId) || r.urunId,
-        hammadde: hamMap.get(r.hammaddeId) || r.hammaddeId
-      }));
-
+      const enriched = await refreshReceteler();
       setRows(enriched);
       setSaveMessage('Reçete eklendi.');
     } catch (e) {
@@ -570,12 +545,20 @@ function App({ currentUser }) {
         throw new Error(err.error || 'Kayıt silinemedi');
       }
       // listeyi yenile
-      const listRes = await fetch(selected.path);
-      if (!listRes.ok) throw new Error('Liste yenilenemedi');
-      const data = await listRes.json();
-      setRows(Array.isArray(data) ? data : []);
+      if (selected.key === 'receteler') {
+        setLoading(true);
+        const enriched = await refreshReceteler();
+        setRows(enriched);
+      } else {
+        const listRes = await fetch(selected.path);
+        if (!listRes.ok) throw new Error('Liste yenilenemedi');
+        const data = await listRes.json();
+        setRows(Array.isArray(data) ? data : []);
+      }
     } catch (e) {
       setError(e.message || 'Silme sırasında hata oluştu');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -638,32 +621,7 @@ function App({ currentUser }) {
 
       // Listeyi yenile (join dahil)
       setLoading(true);
-      const [recRes, urunRes, hamRes] = await Promise.all([
-        fetch('/api/receteler'),
-        fetch('/api/urunler'),
-        fetch('/api/hammaddeler')
-      ]);
-      if (!recRes.ok) throw new Error('Reçeteler yenilenemedi');
-      const [recData, urunData, hamData] = await Promise.all([
-        recRes.json(),
-        urunRes.ok ? urunRes.json() : Promise.resolve([]),
-        hamRes.ok ? hamRes.json() : Promise.resolve([])
-      ]);
-      const urunMap = new Map(
-        (Array.isArray(urunData) ? urunData : []).map((u) => [u.id, u.ad])
-      );
-      const hamMap = new Map(
-        (Array.isArray(hamData) ? hamData : []).map((h) => [
-          h.id,
-          { ad: h.ad, birim: h.birim }
-        ])
-      );
-      const enriched = (Array.isArray(recData) ? recData : []).map((r) => ({
-        ...r,
-        urun: urunMap.get(r.urunId) || r.urunId,
-        hammadde: hamMap.get(r.hammaddeId)?.ad || r.hammaddeId,
-        birim: hamMap.get(r.hammaddeId)?.birim || ''
-      }));
+      const enriched = await refreshReceteler();
       setRows(enriched);
     } catch (e) {
       setSaveMessage(e.message || 'Reçete güncellenemedi');
@@ -782,6 +740,38 @@ function App({ currentUser }) {
     setTedarikciler(Array.isArray(data) ? data : []);
   };
 
+  const refreshReceteler = async () => {
+    const [recRes, urunRes, hamRes] = await Promise.all([
+      fetch('/api/receteler'),
+      fetch('/api/urunler'),
+      fetch('/api/hammaddeler')
+    ]);
+    if (!recRes.ok) throw new Error('Reçeteler yenilenemedi');
+
+    const [recData, urunData, hamData] = await Promise.all([
+      recRes.json(),
+      urunRes.ok ? urunRes.json() : Promise.resolve([]),
+      hamRes.ok ? hamRes.json() : Promise.resolve([])
+    ]);
+
+    const urunMap = new Map(
+      (Array.isArray(urunData) ? urunData : []).map((u) => [u.id, u.ad])
+    );
+    const hamMap = new Map(
+      (Array.isArray(hamData) ? hamData : []).map((h) => [
+        h.id,
+        { ad: h.ad, birim: h.birim }
+      ])
+    );
+
+    return (Array.isArray(recData) ? recData : []).map((r) => ({
+      ...r,
+      urun: urunMap.get(r.urunId) || r.urunId,
+      hammadde: hamMap.get(r.hammaddeId)?.ad || r.hammaddeId,
+      birim: hamMap.get(r.hammaddeId)?.birim || ''
+    }));
+  };
+
   const updateOrder = async (orderId, patch) => {
     const upd = await fetch(`/api/siparisler/${orderId}`, {
       method: 'PUT',
@@ -843,27 +833,42 @@ function App({ currentUser }) {
     setOrderItems(enriched);
   };
 
+  const buildPayUnits = () => {
+    // Her siparisDetay kalemi için kalanAdet kadar satır üret (tek tek ödeme).
+    const units = [];
+    for (const it of orderItems) {
+      const kalan = Number(it.kalanAdet) || 0;
+      for (let i = 0; i < kalan; i++) {
+        units.push({
+          unitKey: `${it.id}:${i}`,
+          siparisDetayId: it.id,
+          urunAd: it.urunAd,
+          birimFiyat: it.birimFiyat
+        });
+      }
+    }
+    return units;
+  };
+
   const handleSplitPay = async () => {
     if (!activeOrder) return;
     setSaveMessage('');
     setError('');
 
-    const items = orderItems
-      .map((it) => ({
-        siparisDetayId: it.id,
-        adet: Number(payDrafts[it.id]) || 0,
-        kalanAdet: Number(it.kalanAdet) || 0
-      }))
-      .filter((x) => x.adet > 0);
+    const units = buildPayUnits();
+    const picked = units.filter((u) => Boolean(payDrafts[u.unitKey]));
+
+    const countMap = new Map();
+    for (const u of picked) {
+      countMap.set(u.siparisDetayId, (countMap.get(u.siparisDetayId) || 0) + 1);
+    }
+    const items = Array.from(countMap.entries()).map(([siparisDetayId, adet]) => ({
+      siparisDetayId,
+      adet
+    }));
 
     if (items.length === 0) {
       setSaveMessage('Ödenecek ürün seçin.');
-      return;
-    }
-
-    const over = items.find((x) => x.adet > x.kalanAdet);
-    if (over) {
-      setSaveMessage('Seçilen adet, kalan adetten fazla olamaz.');
       return;
     }
 
@@ -874,7 +879,7 @@ function App({ currentUser }) {
         body: JSON.stringify({
           siparisId: activeOrder.id,
           odemeTuru: 'nakit',
-          items: items.map((x) => ({ siparisDetayId: x.siparisDetayId, adet: x.adet }))
+          items
         })
       });
       if (!res.ok) {
@@ -912,6 +917,7 @@ function App({ currentUser }) {
     try {
       await ensureProductsLoaded();
       setSelectedMasa(masa);
+      setMasaAdDraft(String(masa.ad || '').trim());
       // mevcut açık sipariş var mı?
       let order =
         allSiparisler.find((s) => s.masaId === masa.id && s.durum !== 'kapatildi') || null;
@@ -933,6 +939,39 @@ function App({ currentUser }) {
       await loadOrderItems(order.id);
     } catch (e) {
       setError(e.message || 'Masa için sipariş alınırken hata oluştu');
+    }
+  };
+
+  const handleUpdateMasaAd = async () => {
+    if (!selectedMasa) return;
+    const ad = String(masaAdDraft || '').trim();
+    if (!ad) {
+      setSaveMessage('Masa numarası boş olamaz.');
+      return;
+    }
+    try {
+      setSaveMessage('');
+      setError('');
+      const res = await fetch(`/api/masalar/${selectedMasa.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ad,
+          kapasite: selectedMasa.kapasite ?? null,
+          rezerveDurum: selectedMasa.rezerveDurum ?? null,
+          rezervasyonTarihi: selectedMasa.rezervasyonTarihi ?? null
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Masa güncellenemedi');
+      }
+      const updated = await res.json();
+      setSelectedMasa((prev) => (prev ? { ...prev, ...updated } : prev));
+      setRows((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
+      setSaveMessage('Masa numarası güncellendi.');
+    } catch (e) {
+      setSaveMessage(e.message || 'Masa güncellenemedi');
     }
   };
 
@@ -997,6 +1036,8 @@ function App({ currentUser }) {
     (sum, it) => sum + (Number(it.araToplam) || 0),
     0
   );
+
+  const payUnits = buildPayUnits();
 
   const handleHistoryClick = async (order) => {
     try {
@@ -1477,6 +1518,23 @@ function App({ currentUser }) {
                     <div className="order-panel">
                       <h2>Sipariş Detayları</h2>
                       <div className="order-products">
+                        <h3>Masa Numarası</h3>
+                        <div className="order-add-row">
+                          <input
+                            className="add-input"
+                            value={masaAdDraft}
+                            onChange={(e) => setMasaAdDraft(e.target.value)}
+                            placeholder="örn. 1"
+                            style={{ maxWidth: 160 }}
+                          />
+                          <button
+                            type="button"
+                            className="ghost-btn"
+                            onClick={handleUpdateMasaAd}
+                          >
+                            Kaydet
+                          </button>
+                        </div>
                         <h3>Ürün Ekle</h3>
                         <div className="order-add-row">
                           <select
@@ -1508,22 +1566,19 @@ function App({ currentUser }) {
                           </button>
                         </div>
                         <div className="order-items">
-                          {orderItems.map((it) => (
-                            <div key={it.id} className="order-item">
-                              <div>
-                                <div className="order-item-name">{it.urunAd}</div>
-                                <div className="order-item-sub">
-                                  {it.adet} x ₺{it.birimFiyat}
+                          {orderItems.flatMap((it) => {
+                            const kalan = Number(it.kalanAdet) || 0;
+                            // Kalan adet kadar satır göster (tek tek ödeme için)
+                            return Array.from({ length: Math.max(0, kalan) }, (_, idx) => (
+                              <div key={`${it.id}:${idx}`} className="order-item">
+                                <div>
+                                  <div className="order-item-name">{it.urunAd}</div>
+                                  <div className="order-item-sub">₺{it.birimFiyat}</div>
                                 </div>
-                                {Number(it.paidAdet) > 0 && (
-                                  <div className="order-item-sub">
-                                    Ödendi: {it.paidAdet} • Kalan: {it.kalanAdet}
-                                  </div>
-                                )}
+                                <div className="order-item-total">₺{it.birimFiyat}</div>
                               </div>
-                              <div className="order-item-total">₺{it.araToplam}</div>
-                            </div>
-                          ))}
+                            ));
+                          })}
                           {orderItems.length === 0 && (
                             <div>Bu masa için henüz ürün eklenmemiş.</div>
                           )}
@@ -1531,35 +1586,27 @@ function App({ currentUser }) {
                       </div>
                       <div className="order-products" style={{ marginTop: 12 }}>
                         <h3>Ürün Bazlı Ödeme</h3>
-                        {orderItems.length === 0 ? (
+                        {payUnits.length === 0 ? (
                           <div>Ödeme alınacak ürün yok.</div>
                         ) : (
                           <div className="pay-list">
-                            {orderItems.map((it) => (
-                              <div key={it.id} className="pay-row">
-                                <div className="pay-left">
-                                  <div className="order-item-name">{it.urunAd}</div>
-                                  <div className="order-item-sub">
-                                    Kalan: {it.kalanAdet} • Birim: ₺{it.birimFiyat}
-                                  </div>
-                                </div>
+                            {payUnits.map((u) => (
+                              <label key={u.unitKey} className="pay-row pay-row-check">
                                 <input
-                                  className="add-input"
-                                  type="number"
-                                  min="0"
-                                  max={it.kalanAdet}
-                                  value={payDrafts[it.id] ?? ''}
+                                  type="checkbox"
+                                  checked={Boolean(payDrafts[u.unitKey])}
                                   onChange={(e) =>
                                     setPayDrafts((prev) => ({
                                       ...prev,
-                                      [it.id]: e.target.value
+                                      [u.unitKey]: e.target.checked
                                     }))
                                   }
-                                  placeholder="Adet"
-                                  style={{ maxWidth: 90 }}
-                                  disabled={Number(it.kalanAdet) <= 0}
                                 />
-                              </div>
+                                <div className="pay-left">
+                                  <div className="order-item-name">{u.urunAd}</div>
+                                  <div className="order-item-sub">₺{u.birimFiyat}</div>
+                                </div>
+                              </label>
                             ))}
                             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                               <button

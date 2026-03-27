@@ -486,6 +486,16 @@ tbody tr:hover {
   background-color: #ffffff;
 }
 
+.pay-row-check {
+  justify-content: flex-start;
+}
+
+.pay-row-check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #dc2626;
+}
+
 .pay-left {
   min-width: 0;
 }
