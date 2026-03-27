@@ -220,11 +220,12 @@ body {
   cursor: pointer;
   border: 1px solid rgba(220, 38, 38, 0.9);
   background-color: rgba(220, 38, 38, 0.2);
-  color: #fecaca;
+  color: #111827;
 }
 
 .danger-btn:hover {
   background-color: rgba(220, 38, 38, 0.6);
+  color: #111827;
 }
 
 .content-body {
