@@ -27,22 +27,26 @@ router.post('/', (req, res) => {
   } catch {
     pool = null;
   }
+  const { ad, miktar, birim } = req.body || {};
+  const name = (ad || '').toString().trim();
+  if (!name) {
+    return res.status(400).json({ error: 'Hammadde adı zorunlu' });
+  }
   if (!pool) {
-    const created = Hammaddeler.create(req.body);
+    const created = Hammaddeler.create({ ...req.body, ad: name });
     return res.status(201).json(created);
   }
 
   const { v4: uuid } = require('uuid');
   const id = uuid();
-  const { ad, miktar, birim } = req.body || {};
   pool
     .query('INSERT INTO hammaddeler (id, ad, miktar, birim) VALUES (?,?,?,?)', [
       id,
-      ad || '',
+      name,
       Number(miktar) || 0,
       birim || null
     ])
-    .then(() => res.status(201).json({ id, ad, miktar: Number(miktar) || 0, birim }))
+    .then(() => res.status(201).json({ id, ad: name, miktar: Number(miktar) || 0, birim }))
     .catch((e) => res.status(500).json({ error: e.message }));
 });
 

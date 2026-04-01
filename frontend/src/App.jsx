@@ -97,6 +97,12 @@ const ENTITIES = [
           { name: 'kullaniciId', label: 'Kullanıcı Id' },
           { name: 'durum', label: 'Durum (acik/kapatildi)' }
         ]
+      },
+      {
+        key: 'siparis-raporu',
+        label: 'Sipariş Raporu',
+        path: '/api/siparisler',
+        hideAdd: true
       }
     ]
   },
@@ -130,12 +136,17 @@ const ENTITIES = [
         label: 'Stok Hareketleri',
         path: '/api/stok-hareketleri',
         fields: [
-          { name: 'hammaddeId', label: 'Hammadde Adı' },
+          {
+            name: 'hammaddeId',
+            label: 'Hammadde Adı',
+            control: 'select',
+            placeholder: 'Hammadde seçin'
+          },
           {
             name: 'tedarikciId',
             label: 'Tedarikçi Adı',
-            type: 'text',
-            placeholder: 'Tedarikçi adı'
+            control: 'select',
+            placeholder: 'Tedarikçi seçin'
           },
           {
             name: 'birim',
@@ -267,6 +278,9 @@ function App({ currentUser }) {
   const [hammaddeler, setHammaddeler] = useState([]);
   const [tedarikciler, setTedarikciler] = useState([]);
   const [masaAdDraft, setMasaAdDraft] = useState('');
+  const [reportFrom, setReportFrom] = useState('');
+  const [reportTo, setReportTo] = useState('');
+  const [reportRows, setReportRows] = useState([]);
 
   // Masalar ekranında kartları ad (masa no) numarasina gore siralamak icin.
   // Not: Tüm ekranlarda calistigindan dolayi ad olmayan kayitlarda 0 kabul ediyoruz.
@@ -310,6 +324,7 @@ function App({ currentUser }) {
     setHistoryItems([]);
     setHistoryPayments([]);
     setTedarikciler([]);
+    setReportRows([]);
     fetch(selected.path)
       .then(async (res) => {
         if (!res.ok) throw new Error('Sunucudan veri alınamadı');
@@ -378,6 +393,39 @@ function App({ currentUser }) {
           } catch {
             // join opsiyonel
           }
+
+          // Mutfak ekranında sipariş içeriğini göster (hangi ürünler)
+          if (selected.view === 'kitchen') {
+            try {
+              const [detRes, urunRes] = await Promise.all([
+                fetch('/api/siparis-detay'),
+                fetch('/api/urunler')
+              ]);
+              if (detRes.ok && urunRes.ok) {
+                const [detData, urunData] = await Promise.all([detRes.json(), urunRes.json()]);
+                const detaylar = Array.isArray(detData) ? detData : [];
+                const urunMap = new Map(
+                  (Array.isArray(urunData) ? urunData : []).map((u) => [u.id, u.ad])
+                );
+                const bySiparis = new Map();
+                for (const d of detaylar) {
+                  if (!d.siparisId) continue;
+                  const arr = bySiparis.get(d.siparisId) || [];
+                  arr.push(d);
+                  bySiparis.set(d.siparisId, arr);
+                }
+                rowsData = rowsData.map((r) => {
+                  const det = bySiparis.get(r.id) || [];
+                  const urunlerText = det
+                    .map((x) => `${urunMap.get(x.urunId) || x.urunId} x${x.adet || 1}`)
+                    .join(', ');
+                  return { ...r, urunler: urunlerText };
+                });
+              }
+            } catch {
+              // opsiyonel
+            }
+          }
         } else if (selected.key === 'receteler') {
           try {
             const [urunRes, hamRes] = await Promise.all([
@@ -430,6 +478,40 @@ function App({ currentUser }) {
     }
   }, [selected]);
 
+  // Sipariş raporu: default bugun (00:00-23:59)
+  useEffect(() => {
+    if (!selected || selected.key !== 'siparis-raporu') return;
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const isoLocal = (d) => {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+        d.getHours()
+      )}:${pad(d.getMinutes())}`;
+    };
+    setReportFrom(isoLocal(start));
+    setReportTo(isoLocal(end));
+  }, [selected]);
+
+  // Rapor: tarih değişince otomatik yükle (default: bugünün raporu)
+  useEffect(() => {
+    if (!selected || selected.key !== 'siparis-raporu') return;
+    if (!reportFrom || !reportTo) return;
+    (async () => {
+      try {
+        setLoading(true);
+        setError('');
+        const rows = await loadSiparisRaporu(reportFrom, reportTo);
+        setReportRows(rows);
+      } catch (e) {
+        setError(e.message || 'Rapor alınamadı');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [selected, reportFrom, reportTo]);
+
   // Çalışanlar / görev tanımları için ayrı yükleme
   useEffect(() => {
     if (!selected || selected.key !== 'calisanlar') return;
@@ -458,7 +540,7 @@ function App({ currentUser }) {
     }
     if (selected.key === 'stok-hareketleri') {
       // stok hareketi eklerken tedarikçi seçenekleri hazır olsun
-      Promise.allSettled([ensureTedarikcilerLoaded()]);
+      Promise.allSettled([ensureHammaddelerLoaded(), ensureTedarikcilerLoaded()]);
     }
   }, [showAdd, selected]);
 
@@ -467,6 +549,15 @@ function App({ currentUser }) {
     const body = { ...formValues };
 
     try {
+      // basit validasyonlar
+      if (selected?.key === 'hammaddeler') {
+        const ad = (body.ad || '').toString().trim();
+        if (!ad) {
+          setSaveMessage('Hammadde adı boş olamaz.');
+          return;
+        }
+      }
+
       const res = await fetch(selected.path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -738,6 +829,72 @@ function App({ currentUser }) {
     if (!res.ok) throw new Error('Tedarikçiler alınamadı');
     const data = await res.json();
     setTedarikciler(Array.isArray(data) ? data : []);
+  };
+
+  const loadSiparisRaporu = async (fromValue, toValue) => {
+    const from = fromValue ? new Date(fromValue) : null;
+    const to = toValue ? new Date(toValue) : null;
+
+    const [sipRes, detRes, urunRes, masaRes] = await Promise.all([
+      fetch('/api/siparisler'),
+      fetch('/api/siparis-detay'),
+      fetch('/api/urunler'),
+      fetch('/api/masalar')
+    ]);
+    if (!sipRes.ok) throw new Error('Siparişler alınamadı');
+    if (!detRes.ok) throw new Error('Sipariş detayları alınamadı');
+
+    const [siparislerData, detayData, urunlerData, masalarData] = await Promise.all([
+      sipRes.json(),
+      detRes.json(),
+      urunRes.ok ? urunRes.json() : Promise.resolve([]),
+      masaRes.ok ? masaRes.json() : Promise.resolve([])
+    ]);
+
+    const siparisler = Array.isArray(siparislerData) ? siparislerData : [];
+    const detaylar = Array.isArray(detayData) ? detayData : [];
+
+    const urunMap = new Map(
+      (Array.isArray(urunlerData) ? urunlerData : []).map((u) => [u.id, u.ad])
+    );
+    const masaMap = new Map(
+      (Array.isArray(masalarData) ? masalarData : []).map((m) => [m.id, m.ad])
+    );
+
+    const inRange = (iso) => {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return false;
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    };
+
+    const filtered = siparisler.filter((s) => inRange(s.olusturmaTarihi || s.odemeTarihi || s.tarih));
+
+    const bySiparis = new Map();
+    for (const d of detaylar) {
+      if (!d.siparisId) continue;
+      const arr = bySiparis.get(d.siparisId) || [];
+      arr.push(d);
+      bySiparis.set(d.siparisId, arr);
+    }
+
+    const rows = filtered.map((s) => {
+      const det = bySiparis.get(s.id) || [];
+      const urunList = det
+        .map((x) => `${urunMap.get(x.urunId) || x.urunId} (${x.adet || 1})`)
+        .join(', ');
+      return {
+        siparisNo: String(s.id).slice(0, 6),
+        masa: masaMap.get(s.masaId) || s.masaId,
+        durum: s.durum,
+        toplamTutar: s.toplamTutar || 0,
+        tarih: s.olusturmaTarihi || '',
+        urunler: urunList
+      };
+    });
+
+    return rows;
   };
 
   const refreshReceteler = async () => {
@@ -1189,6 +1346,12 @@ function App({ currentUser }) {
                     ? []
                     : selected?.key === 'stok-hareketleri'
                     ? (selected?.fields || []).map((f) => {
+                        if (f.name === 'hammaddeId' && f.control === 'select') {
+                          return {
+                            ...f,
+                            options: hammaddeler.map((h) => ({ value: h.id, label: h.ad }))
+                          };
+                        }
                         if (f.name === 'tedarikciId' && f.control === 'select') {
                           return {
                             ...f,
@@ -1643,7 +1806,50 @@ function App({ currentUser }) {
                 </>
               ) : (
                 <>
-                  {selected?.view === 'kitchen' ? (
+                  {selected?.key === 'siparis-raporu' ? (
+                    <div className="order-panel" style={{ marginTop: 0 }}>
+                      <h2>Sipariş Raporu</h2>
+                      <div className="order-add-row" style={{ marginBottom: 10 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <label className="add-label">Başlangıç</label>
+                          <input
+                            className="add-input"
+                            type="datetime-local"
+                            value={reportFrom}
+                            onChange={(e) => setReportFrom(e.target.value)}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <label className="add-label">Bitiş</label>
+                          <input
+                            className="add-input"
+                            type="datetime-local"
+                            value={reportTo}
+                            onChange={(e) => setReportTo(e.target.value)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="primary-btn"
+                          onClick={async () => {
+                            try {
+                              setLoading(true);
+                              setError('');
+                              const rows = await loadSiparisRaporu(reportFrom, reportTo);
+                              setReportRows(rows);
+                            } catch (e) {
+                              setError(e.message || 'Rapor alınamadı');
+                            } finally {
+                              setLoading(false);
+                            }
+                          }}
+                        >
+                          Raporu Getir
+                        </button>
+                      </div>
+                      <EntityTable rows={reportRows} />
+                    </div>
+                  ) : selected?.view === 'kitchen' ? (
                     <div className="kitchen-list">
                       {rows.length === 0 && <div>Gösterilecek sipariş yok.</div>}
                       {rows.map((o) => (
@@ -1654,6 +1860,11 @@ function App({ currentUser }) {
                               <span className="kitchen-sub">
                                 #{String(o.id).slice(0, 6)} • {o.kullanici || o.kullaniciId || '-'}
                               </span>
+                              {o.urunler && (
+                                <div className="kitchen-sub" style={{ marginTop: 4 }}>
+                                  {o.urunler}
+                                </div>
+                              )}
                             </div>
                             <div className="kitchen-right">
                               <div className="kitchen-total">₺{o.toplamTutar || 0}</div>
