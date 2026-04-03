@@ -29,7 +29,7 @@ router.post('/', (req, res) => {
   }
   const urunRaw = (req.body.urunId || '').toString().trim();
   const hammaddeRaw = (req.body.hammaddeId || '').toString().trim();
-  const hammaddeBirim = (req.body.birim || '').toString().trim();
+  const secilenBirim = (req.body.birim || '').toString().trim(); // recete bazli birim
   const miktar = Number(req.body.miktar) || 0;
 
   if (!urunRaw || !hammaddeRaw) {
@@ -108,41 +108,36 @@ router.post('/', (req, res) => {
     const createdPayload = {
       urunId,
       hammaddeId,
-      miktar
+      miktar,
+      birim: secilenBirim || null
     };
 
     if (!pool) {
       const ham = Hammaddeler.findById(hammaddeId);
-      const birim = (ham?.birim || '').toString().trim();
-      if (!birim) {
-        return res.status(400).json({ error: 'Hammadde birimi zorunlu' });
+      const hamBirim = (ham?.birim || '').toString().trim();
+      if (!secilenBirim) return res.status(400).json({ error: 'Birim zorunlu' });
+      if (!hamBirim) {
+        Hammaddeler.update(hammaddeId, { birim: secilenBirim });
+      } else if (hamBirim !== secilenBirim) {
+        return res.status(400).json({ error: 'Seçilen birim hammadde birimi ile aynı olmalı' });
       }
       const created = Receteler.create(createdPayload);
       return res.status(201).json(created);
     }
 
-    // Hammaddenin birimi zorunlu (stok düşümü için)
-    const [hamRows] = await pool.query('SELECT birim FROM hammaddeler WHERE id=? LIMIT 1', [
-      hammaddeId
-    ]);
+    if (!secilenBirim) return res.status(400).json({ error: 'Birim zorunlu' });
+    const [hamRows] = await pool.query('SELECT birim FROM hammaddeler WHERE id=? LIMIT 1', [hammaddeId]);
     const hamBirim = (hamRows?.[0]?.birim || '').toString().trim();
     if (!hamBirim) {
-      return res.status(400).json({ error: 'Hammadde birimi zorunlu' });
-    }
-
-    // Hammaddenin birimini seçilen değere göre güncelle.
-    // Not: receteler tablosunda birim kolonu olmadığı için birlik bilgisi hammaddeler üzerinden tutuluyor.
-    if (hammaddeBirim) {
-      await pool.query('UPDATE hammaddeler SET birim=? WHERE id=?', [
-        hammaddeBirim,
-        hammaddeId
-      ]);
+      await pool.query('UPDATE hammaddeler SET birim=? WHERE id=?', [secilenBirim, hammaddeId]);
+    } else if (hamBirim !== secilenBirim) {
+      return res.status(400).json({ error: 'Seçilen birim hammadde birimi ile aynı olmalı' });
     }
 
     const id = newId();
     await pool.query(
-      'INSERT INTO receteler (id, urunId, hammaddeId, miktar) VALUES (?,?,?,?)',
-      [id, createdPayload.urunId, createdPayload.hammaddeId, createdPayload.miktar]
+      'INSERT INTO receteler (id, urunId, hammaddeId, miktar, birim) VALUES (?,?,?,?,?)',
+      [id, createdPayload.urunId, createdPayload.hammaddeId, createdPayload.miktar, createdPayload.birim]
     );
     return res.status(201).json({ id, ...createdPayload });
   };
@@ -161,6 +156,7 @@ router.put('/:id', (req, res) => {
   const id = req.params.id;
   const urunRaw = (req.body.urunId || '').toString().trim();
   const hammaddeRaw = (req.body.hammaddeId || '').toString().trim();
+  const secilenBirim = (req.body.birim || '').toString().trim();
   const miktar = Number(req.body.miktar) || 0;
 
   if (!id) return res.status(400).json({ error: 'id zorunlu' });
@@ -232,20 +228,121 @@ router.put('/:id', (req, res) => {
     const hammaddeId = await resolveHammaddeId(pool);
 
     if (!pool) {
-      const updated = Receteler.update(id, { urunId, hammaddeId, miktar });
+      if (!secilenBirim) return res.status(400).json({ error: 'Birim zorunlu' });
+      const ham = Hammaddeler.findById(hammaddeId);
+      const hamBirim = (ham?.birim || '').toString().trim();
+      if (!hamBirim) {
+        Hammaddeler.update(hammaddeId, { birim: secilenBirim });
+      } else if (hamBirim !== secilenBirim) {
+        return res.status(400).json({ error: 'Seçilen birim hammadde birimi ile aynı olmalı' });
+      }
+      const updated = Receteler.update(id, { urunId, hammaddeId, miktar, birim: secilenBirim });
       if (!updated) return res.status(404).json({ error: 'Kayıt bulunamadı' });
       return res.json(updated);
     }
 
+    if (!secilenBirim) return res.status(400).json({ error: 'Birim zorunlu' });
+    const [hamRows] = await pool.query('SELECT birim FROM hammaddeler WHERE id=? LIMIT 1', [hammaddeId]);
+    const hamBirim = (hamRows?.[0]?.birim || '').toString().trim();
+    if (!hamBirim) {
+      await pool.query('UPDATE hammaddeler SET birim=? WHERE id=?', [secilenBirim, hammaddeId]);
+    } else if (hamBirim !== secilenBirim) {
+      return res.status(400).json({ error: 'Seçilen birim hammadde birimi ile aynı olmalı' });
+    }
+
     const [result] = await pool.query(
-      'UPDATE receteler SET urunId=?, hammaddeId=?, miktar=? WHERE id=?',
-      [urunId, hammaddeId, miktar, id]
+      'UPDATE receteler SET urunId=?, hammaddeId=?, miktar=?, birim=? WHERE id=?',
+      [urunId, hammaddeId, miktar, secilenBirim, id]
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Kayıt bulunamadı' });
-    return res.json({ id, urunId, hammaddeId, miktar });
+    return res.json({ id, urunId, hammaddeId, miktar, birim: secilenBirim });
   };
 
   run().catch((e) => res.status(500).json({ error: e.message }));
+});
+
+// Çoklu ürün + çoklu hammadde: tek seferde reçete tanımla
+router.post('/batch', (req, res) => {
+  let pool;
+  try {
+    pool = getPool();
+  } catch {
+    pool = null;
+  }
+
+  const recipes = Array.isArray(req.body?.recipes) ? req.body.recipes : [];
+  if (recipes.length === 0) return res.status(400).json({ error: 'recipes zorunlu' });
+
+  if (!pool) {
+    const created = [];
+    for (const r of recipes) {
+      const urunId = (r.urunId || '').toString().trim();
+      const items = Array.isArray(r.items) ? r.items : [];
+      if (!urunId || items.length === 0) continue;
+      for (const it of items) {
+        const hammaddeId = (it.hammaddeId || '').toString().trim();
+        const miktar = Number(it.miktar) || 0;
+        const birim = (it.birim || '').toString().trim();
+        if (!hammaddeId || !birim || miktar <= 0) continue;
+        const ham = Hammaddeler.findById(hammaddeId);
+        const hamBirim = (ham?.birim || '').toString().trim();
+        if (!hamBirim) Hammaddeler.update(hammaddeId, { birim });
+        if (hamBirim && hamBirim !== birim) continue;
+        created.push(Receteler.create({ urunId, hammaddeId, miktar, birim }));
+      }
+    }
+    return res.status(201).json(created);
+  }
+
+  (async () => {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const created = [];
+      for (const r of recipes) {
+        const urunId = (r.urunId || '').toString().trim();
+        const items = Array.isArray(r.items) ? r.items : [];
+        if (!urunId || items.length === 0) continue;
+
+        for (const it of items) {
+          const hammaddeId = (it.hammaddeId || '').toString().trim();
+          const miktar = Number(it.miktar) || 0;
+          const birim = (it.birim || '').toString().trim();
+          if (!hammaddeId || !birim || miktar <= 0) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Hammadde, birim ve miktar zorunlu' });
+          }
+
+          const [hamRows] = await conn.query('SELECT birim FROM hammaddeler WHERE id=? LIMIT 1', [
+            hammaddeId
+          ]);
+          const hamBirim = (hamRows?.[0]?.birim || '').toString().trim();
+          if (!hamBirim) {
+            await conn.query('UPDATE hammaddeler SET birim=? WHERE id=?', [birim, hammaddeId]);
+          } else if (hamBirim !== birim) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Seçilen birim hammadde birimi ile aynı olmalı' });
+          }
+
+          const id = newId();
+          await conn.query(
+            'INSERT INTO receteler (id, urunId, hammaddeId, miktar, birim) VALUES (?,?,?,?,?)',
+            [id, urunId, hammaddeId, miktar, birim]
+          );
+          created.push({ id, urunId, hammaddeId, miktar, birim });
+        }
+      }
+      await conn.commit();
+      return res.status(201).json(created);
+    } catch (e) {
+      try {
+        await conn.rollback();
+      } catch {}
+      return res.status(500).json({ error: e.message });
+    } finally {
+      conn.release();
+    }
+  })();
 });
 
 router.delete('/:id', (req, res) => {

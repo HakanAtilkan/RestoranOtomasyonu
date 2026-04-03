@@ -89,8 +89,13 @@ function RecipeForm({
               >
                 <option value="">Hammadde seçin</option>
                 {hammaddeler.map((h) => (
-                  <option key={h.id} value={h.id}>
+                  <option
+                    key={h.id}
+                    value={h.id}
+                    disabled={!String(h.birim || '').trim()}
+                  >
                     {h.ad}
+                    {!String(h.birim || '').trim() ? ' (Birim yok)' : ''}
                   </option>
                 ))}
               </select>

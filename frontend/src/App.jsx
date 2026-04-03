@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import SidebarTree from './components/SidebarTree';
 import EntityTable from './components/EntityTable';
 import EntityForm from './components/EntityForm';
-import RecipeForm from './components/RecipeForm';
+import RecipeBatchModal from './components/RecipeBatchModal';
 
 const ENTITIES = [
   {
@@ -455,7 +455,7 @@ function App({ currentUser }) {
                 ...r,
                 urun: urunMap.get(r.urunId) || r.urunId,
                 hammadde: hamMap.get(r.hammaddeId)?.ad || r.hammaddeId,
-                birim: hamMap.get(r.hammaddeId)?.birim || ''
+                birim: r.birim || hamMap.get(r.hammaddeId)?.birim || ''
               }));
             }
           } catch {
@@ -588,42 +588,7 @@ function App({ currentUser }) {
     }
   };
 
-  const handleCreateReceteler = async ({ urunId, ingredients }) => {
-    setSaveMessage('');
-    setError('');
-    try {
-      const postList = (ingredients || []).map((ing) =>
-        fetch('/api/receteler', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            urunId,
-            hammaddeId: ing.hammaddeId,
-            miktar: ing.miktar
-          })
-        }).then(async (r) => {
-          if (!r.ok) {
-            const err = await r.json().catch(() => ({}));
-            throw new Error(err.error || 'Reçete eklenemedi');
-          }
-          return r.json();
-        })
-      );
-
-      await Promise.all(postList);
-
-      // Listeyi yenile + urun/hammadde join
-      setLoading(true);
-      setShowAdd(false);
-      const enriched = await refreshReceteler();
-      setRows(enriched);
-      setSaveMessage('Reçete eklendi.');
-    } catch (e) {
-      setSaveMessage(e.message || 'Reçete eklenemedi');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Not: Reçete ekleme artık modal üzerinden /api/receteler/batch ile yapılıyor.
 
   const handleDelete = async (id) => {
     if (!selected) return;
@@ -678,6 +643,7 @@ function App({ currentUser }) {
     setSaveMessage('');
     setError('');
     try {
+      await ensureProductsLoaded();
       await ensureHammaddelerLoaded();
     } catch {
       // seçenekler yüklenemezse yine de edit aç
@@ -687,7 +653,8 @@ function App({ currentUser }) {
       id: row.id,
       urunId: row.urunId,
       hammaddeId: row.hammaddeId,
-      miktar: row.miktar
+      miktar: row.miktar,
+      birim: row.birim || ''
     });
   };
 
@@ -702,7 +669,8 @@ function App({ currentUser }) {
         body: JSON.stringify({
           urunId: editRecipeValues.urunId,
           hammaddeId: editRecipeValues.hammaddeId,
-          miktar: editRecipeValues.miktar
+          miktar: editRecipeValues.miktar,
+          birim: editRecipeValues.birim
         })
       });
       if (!res.ok) {
@@ -1374,60 +1342,60 @@ function App({ currentUser }) {
           ) : null}
         </header>
         <section className="content-body">
-          {showAdd && selected?.key === 'receteler' ? (
-            <RecipeForm
+          {showAdd && selected?.key === 'receteler' && (
+            <RecipeBatchModal
               hammaddeler={hammaddeler}
               products={products}
-              onSubmit={handleCreateReceteler}
+              onSaved={async () => {
+                // listeyi isimlerle tekrar yükle
+                await refreshReceteler();
+              }}
+              onClose={() => {
+                setShowAdd(false);
+                setSaveMessage('');
+              }}
+            />
+          )}
+
+          {showAdd && selected?.key !== 'receteler' && (
+            <EntityForm
+              title={`Yeni ${selected?.label} Kaydı`}
+              fields={
+                selected?.key === 'stok-hareketleri'
+                  ? (selected?.fields || []).map((f) => {
+                      if (f.name === 'hammaddeId' && f.control === 'select') {
+                        return {
+                          ...f,
+                          options: hammaddeler.map((h) => ({ value: h.id, label: h.ad }))
+                        };
+                      }
+                      if (f.name === 'tedarikciId' && f.control === 'select') {
+                        return {
+                          ...f,
+                          options: tedarikciler.map((t) => ({
+                            value: t.id,
+                            label: t.ad
+                          }))
+                        };
+                      }
+                      return f;
+                    })
+                  : selected?.fields || []
+              }
+              values={formValues}
+              onChange={(name, value) =>
+                setFormValues((prev) => ({
+                  ...prev,
+                  [name]: value
+                }))
+              }
+              onSubmit={handleCreate}
               onCancel={() => {
                 setShowAdd(false);
                 setSaveMessage('');
               }}
-              errorMessage={null}
+              saveMessage={saveMessage}
             />
-          ) : (
-            showAdd && (
-              <EntityForm
-                title={`Yeni ${selected?.label} Kaydı`}
-                fields={
-                  selected?.key === 'receteler'
-                    ? []
-                    : selected?.key === 'stok-hareketleri'
-                    ? (selected?.fields || []).map((f) => {
-                        if (f.name === 'hammaddeId' && f.control === 'select') {
-                          return {
-                            ...f,
-                            options: hammaddeler.map((h) => ({ value: h.id, label: h.ad }))
-                          };
-                        }
-                        if (f.name === 'tedarikciId' && f.control === 'select') {
-                          return {
-                            ...f,
-                            options: tedarikciler.map((t) => ({
-                              value: t.id,
-                              label: t.ad
-                            }))
-                          };
-                        }
-                        return f;
-                      })
-                    : selected?.fields || []
-                }
-                values={formValues}
-                onChange={(name, value) =>
-                  setFormValues((prev) => ({
-                    ...prev,
-                    [name]: value
-                  }))
-                }
-                onSubmit={handleCreate}
-                onCancel={() => {
-                  setShowAdd(false);
-                  setSaveMessage('');
-                }}
-                saveMessage={saveMessage}
-              />
-            )
           )}
           {editRow && selected?.key === 'kullanicilar' && (
             <EntityForm
@@ -1453,13 +1421,31 @@ function App({ currentUser }) {
             <EntityForm
               title="Reçete Düzenle"
               fields={[
-                { name: 'urunId', label: 'Ürün Adı' },
+                {
+                  name: 'urunId',
+                  label: 'Ürün',
+                  control: 'select',
+                  placeholder: 'Ürün seçin',
+                  options: products.map((p) => ({ value: p.id, label: p.ad }))
+                },
                 {
                   name: 'hammaddeId',
                   label: 'Hammadde',
                   control: 'select',
                   placeholder: 'Hammadde seçin',
                   options: hammaddeler.map((h) => ({ value: h.id, label: h.ad }))
+                },
+                {
+                  name: 'birim',
+                  label: 'Birim',
+                  control: 'select',
+                  placeholder: 'Birim seçin',
+                  options: [
+                    { value: 'kg', label: 'Kilogram (kg)' },
+                    { value: 'gr', label: 'Gram (gr)' },
+                    { value: 'lt', label: 'Litre (lt)' },
+                    { value: 'adet', label: 'Adet' }
+                  ]
                 },
                 { name: 'miktar', label: 'Miktar', type: 'number' }
               ]}

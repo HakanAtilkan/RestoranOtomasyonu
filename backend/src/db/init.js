@@ -80,9 +80,17 @@ async function initDb() {
       id VARCHAR(64) PRIMARY KEY,
       urunId VARCHAR(64) NOT NULL,
       hammaddeId VARCHAR(64) NOT NULL,
-      miktar DOUBLE DEFAULT 0
+      miktar DOUBLE DEFAULT 0,
+      birim VARCHAR(16)
     )
   `);
+
+  // Eski kurulumlarda receteler.birim olmayabilir (güvenli alter)
+  try {
+    await pool.query(`ALTER TABLE receteler ADD COLUMN birim VARCHAR(16)`);
+  } catch {
+    // kolon zaten varsa hata verir, görmezden gel
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS siparisler (
