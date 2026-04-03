@@ -1,10 +1,19 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
-function RecipeForm({ hammaddeler = [], initialUrunAdi = '', onSubmit, onCancel, errorMessage }) {
-  const [urunAdi, setUrunAdi] = useState(initialUrunAdi);
+function RecipeForm({
+  hammaddeler = [],
+  products = [],
+  initialUrunId = '',
+  onSubmit,
+  onCancel,
+  errorMessage
+}) {
+  const [urunId, setUrunId] = useState(initialUrunId);
   const [ingredients, setIngredients] = useState([
     { hammaddeId: '', miktar: '' }
   ]);
+
+  const hamMap = useMemo(() => new Map(hammaddeler.map((h) => [h.id, h])), [hammaddeler]);
 
   const canAddMore = ingredients.length < 20;
 
@@ -19,20 +28,23 @@ function RecipeForm({ hammaddeler = [], initialUrunAdi = '', onSubmit, onCancel,
   };
 
   const isValid = () => {
-    const u = String(urunAdi || '').trim();
+    const u = String(urunId || '').trim();
     if (!u) return false;
     return ingredients.every((it) => {
       const h = String(it.hammaddeId || '').trim();
       if (!h) return false;
       const m = Number(it.miktar);
-      return !Number.isNaN(m) && m > 0;
+      if (Number.isNaN(m) || m <= 0) return false;
+      const ham = hamMap.get(h);
+      const birim = (ham?.birim || '').toString().trim();
+      return Boolean(birim);
     });
   };
 
   const handleSubmit = () => {
     if (!isValid()) return;
     const payload = {
-      urunId: urunAdi,
+      urunId,
       ingredients: ingredients.map((it) => ({
         hammaddeId: String(it.hammaddeId).trim(),
         miktar: Number(it.miktar) || 0
@@ -47,16 +59,22 @@ function RecipeForm({ hammaddeler = [], initialUrunAdi = '', onSubmit, onCancel,
       {errorMessage && <div className="error">{errorMessage}</div>}
       <div className="add-panel-grid">
         <div className="add-field">
-          <label className="add-label" htmlFor="urunAdi">
-            Ürün Adı
+          <label className="add-label" htmlFor="urunId">
+            Ürün
           </label>
-          <input
-            id="urunAdi"
+          <select
+            id="urunId"
             className="add-input"
-            value={urunAdi}
-            onChange={(e) => setUrunAdi(e.target.value)}
-            placeholder="örn. Pizza"
-          />
+            value={urunId}
+            onChange={(e) => setUrunId(e.target.value)}
+          >
+            <option value="">Ürün seçin</option>
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.ad}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -76,6 +94,12 @@ function RecipeForm({ hammaddeler = [], initialUrunAdi = '', onSubmit, onCancel,
                   </option>
                 ))}
               </select>
+              {it.hammaddeId && (
+                <div className="order-item-sub" style={{ marginTop: 4 }}>
+                  Birim:{' '}
+                  {String(hamMap.get(it.hammaddeId)?.birim || '').trim() || '—'}
+                </div>
+              )}
             </div>
             <div className="recipe-col" style={{ maxWidth: 140 }}>
               <input

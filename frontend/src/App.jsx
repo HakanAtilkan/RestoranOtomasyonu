@@ -416,9 +416,14 @@ function App({ currentUser }) {
                 }
                 rowsData = rowsData.map((r) => {
                   const det = bySiparis.get(r.id) || [];
-                  const urunlerText = det
-                    .map((x) => `${urunMap.get(x.urunId) || x.urunId} x${x.adet || 1}`)
-                    .join(', ');
+                  const urunlerText =
+                    det.length === 0
+                      ? 'Ürün yok'
+                      : det
+                          .map(
+                            (x) => `${urunMap.get(x.urunId) || x.urunId} x${x.adet || 1}`
+                          )
+                          .join(', ');
                   return { ...r, urunler: urunlerText };
                 });
               }
@@ -869,7 +874,28 @@ function App({ currentUser }) {
       return true;
     };
 
-    const filtered = siparisler.filter((s) => inRange(s.olusturmaTarihi || s.odemeTarihi || s.tarih));
+    const filtered = siparisler
+      .filter((s) => inRange(s.olusturmaTarihi || s.odemeTarihi || s.tarih))
+      .sort((a, b) => {
+        const da = new Date(a.olusturmaTarihi || a.odemeTarihi || a.tarih || 0).getTime();
+        const db = new Date(b.olusturmaTarihi || b.odemeTarihi || b.tarih || 0).getTime();
+        return da - db;
+      });
+
+    const formatDurumTr = (durum) => {
+      const d = String(durum || '').toLowerCase();
+      const map = {
+        kapatildi: 'Kapatıldı',
+        bekliyor: 'Bekliyor',
+        hazirlaniyor: 'Hazırlanıyor',
+        hazir: 'Hazır',
+        rezerve: 'Rezerve',
+        acik: 'Açık'
+      };
+      if (map[d]) return map[d];
+      // bilinmeyen durumlarda ilk harfi büyüt
+      return d ? d.charAt(0).toLocaleUpperCase('tr-TR') + d.slice(1) : '';
+    };
 
     const bySiparis = new Map();
     for (const d of detaylar) {
@@ -879,15 +905,15 @@ function App({ currentUser }) {
       bySiparis.set(d.siparisId, arr);
     }
 
-    const rows = filtered.map((s) => {
+    const rows = filtered.map((s, idx) => {
       const det = bySiparis.get(s.id) || [];
       const urunList = det
         .map((x) => `${urunMap.get(x.urunId) || x.urunId} (${x.adet || 1})`)
         .join(', ');
       return {
-        siparisNo: String(s.id).slice(0, 6),
+        siparisNo: idx + 1,
         masa: masaMap.get(s.masaId) || s.masaId,
-        durum: s.durum,
+        durum: formatDurumTr(s.durum),
         toplamTutar: s.toplamTutar || 0,
         tarih: s.olusturmaTarihi || '',
         urunler: urunList
@@ -1062,6 +1088,27 @@ function App({ currentUser }) {
   const handleMasaClick = async (masa) => {
     // Aynı masaya tekrar tıklanırsa detay panelini kapat
     if (selectedMasa && (selectedMasa.id === masa.id || selectedMasa.ad === masa.ad)) {
+      // Eğer yanlışlıkla tıklandıysa ve henüz ürün eklenmediyse siparişi iptal edebil
+      if (activeOrder && (!orderItems || orderItems.length === 0)) {
+        const ok = window.confirm('Siparişte ürün yok. Siparişi iptal etmek ister misiniz?');
+        if (ok) {
+          try {
+            setSaveMessage('');
+            setError('');
+            const delRes = await fetch(`/api/siparisler/${activeOrder.id}`, { method: 'DELETE' });
+            if (!delRes.ok) {
+              const err = await delRes.json().catch(() => ({}));
+              // ilişkili kayıt varsa zaten silinemez
+              setSaveMessage(err.error || 'Sipariş iptal edilemedi.');
+            } else {
+              setAllSiparisler((prev) => prev.filter((s) => s.id !== activeOrder.id));
+              setSaveMessage('Sipariş iptal edildi.');
+            }
+          } catch (e) {
+            setSaveMessage(e.message || 'Sipariş iptal edilemedi.');
+          }
+        }
+      }
       setSelectedMasa(null);
       setActiveOrder(null);
       setOrderItems([]);
@@ -1330,6 +1377,7 @@ function App({ currentUser }) {
           {showAdd && selected?.key === 'receteler' ? (
             <RecipeForm
               hammaddeler={hammaddeler}
+              products={products}
               onSubmit={handleCreateReceteler}
               onCancel={() => {
                 setShowAdd(false);
@@ -1860,7 +1908,7 @@ function App({ currentUser }) {
                               <span className="kitchen-sub">
                                 #{String(o.id).slice(0, 6)} • {o.kullanici || o.kullaniciId || '-'}
                               </span>
-                              {o.urunler && (
+                              {o.urunler != null && (
                                 <div className="kitchen-sub" style={{ marginTop: 4 }}>
                                   {o.urunler}
                                 </div>

@@ -27,7 +27,10 @@ router.post('/', async (req, res) => {
   const birim = (req.body.birim || '').toString().trim();
   const tedarikciRaw = (req.body.tedarikciId || '').toString().trim();
 
-  if (!tedarikciRaw) return res.status(400).json({ error: 'Tedarikçi zorunlu' });
+  // Girişte tedarikçi zorunlu, çıkışta opsiyonel (örn. yemek tesliminde otomatik düşüş)
+  if (tip === 'giris' && !tedarikciRaw) {
+    return res.status(400).json({ error: 'Tedarikçi zorunlu' });
+  }
 
   const resolveTedarikciId = async (pool) => {
     // Girilen değer bazen gerçek id, bazen ad olabilir.
@@ -71,7 +74,7 @@ router.post('/', async (req, res) => {
   }
 
   // Tedarikci id'yi hem MySQL hem de bellek fallback senaryosunda resolve et.
-  const tedarikciId = await resolveTedarikciId(pool);
+  const tedarikciId = tedarikciRaw ? await resolveTedarikciId(pool) : null;
 
   // Bellek ici fallback
   if (!pool) {

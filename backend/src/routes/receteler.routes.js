@@ -112,8 +112,22 @@ router.post('/', (req, res) => {
     };
 
     if (!pool) {
+      const ham = Hammaddeler.findById(hammaddeId);
+      const birim = (ham?.birim || '').toString().trim();
+      if (!birim) {
+        return res.status(400).json({ error: 'Hammadde birimi zorunlu' });
+      }
       const created = Receteler.create(createdPayload);
       return res.status(201).json(created);
+    }
+
+    // Hammaddenin birimi zorunlu (stok düşümü için)
+    const [hamRows] = await pool.query('SELECT birim FROM hammaddeler WHERE id=? LIMIT 1', [
+      hammaddeId
+    ]);
+    const hamBirim = (hamRows?.[0]?.birim || '').toString().trim();
+    if (!hamBirim) {
+      return res.status(400).json({ error: 'Hammadde birimi zorunlu' });
     }
 
     // Hammaddenin birimini seçilen değere göre güncelle.
