@@ -171,7 +171,7 @@ const ENTITIES = [
           { name: 'ad', label: 'Tedarikçi Adı' },
           {
             name: 'urunlerText',
-            label: 'Ürünler (virgülle)',
+            label: 'Tedarik Ettiği Hammaddeler (virgülle)',
             placeholder: 'örn. domates, biber, soğan'
           }
         ]
@@ -557,8 +557,24 @@ function App({ currentUser }) {
       // basit validasyonlar
       if (selected?.key === 'hammaddeler') {
         const ad = (body.ad || '').toString().trim();
-        if (!ad) {
-          setSaveMessage('Hammadde adı boş olamaz.');
+        const birim = (body.birim || '').toString().trim();
+        const miktar = body.miktar;
+        const miktarOk =
+          miktar !== '' && miktar !== null && typeof miktar !== 'undefined' && !Number.isNaN(Number(miktar));
+        if (!ad || !birim || !miktarOk) {
+          setSaveMessage('Lütfen tüm boşlukları doldurunuz.');
+          return;
+        }
+      }
+      if (selected?.key === 'stok-hareketleri') {
+        const hammaddeId = (body.hammaddeId || '').toString().trim();
+        const tedarikciId = (body.tedarikciId || '').toString().trim();
+        const birim = (body.birim || '').toString().trim();
+        const miktar = body.miktar;
+        const miktarOk =
+          miktar !== '' && miktar !== null && typeof miktar !== 'undefined' && Number(miktar) > 0;
+        if (!hammaddeId || !tedarikciId || !birim || !miktarOk) {
+          setSaveMessage('Lütfen tüm boşlukları doldurunuz.');
           return;
         }
       }

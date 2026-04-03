@@ -15,7 +15,17 @@ router.get('/', (req, res) => {
   if (!pool) return res.json(Tedarikciler.findAll());
 
   pool
-    .query('SELECT * FROM tedarikciler')
+    .query(
+      `
+      SELECT 
+        t.*,
+        COALESCE(GROUP_CONCAT(h.ad ORDER BY h.ad SEPARATOR ', '), '') as urunlerText
+      FROM tedarikciler t
+      LEFT JOIN tedarikci_hammaddeler th ON th.tedarikciId = t.id
+      LEFT JOIN hammaddeler h ON h.id = th.hammaddeId
+      GROUP BY t.id
+      `
+    )
     .then(([rows]) => res.json(rows))
     .catch((e) => res.status(500).json({ error: e.message }));
 });
@@ -38,15 +48,15 @@ router.post('/', (req, res) => {
   const supplierName = (ad || '').toString().trim();
   if (!supplierName) return res.status(400).json({ error: 'Tedarikçi adı zorunlu' });
 
-  // Ürünleri parse et (virgül / yeni satır ayirici)
+  // Hammaddeleri parse et (virgül / yeni satır ayirici)
   const raw = (urunlerText || '').toString();
-  const productNames = raw
+  const materialNames = raw
     .split(/[,;\n\r]+/)
     .map((s) => s.trim())
     .filter(Boolean);
 
-  if (productNames.length === 0) {
-    return res.status(400).json({ error: 'En az 1 ürün girilmeli' });
+  if (materialNames.length === 0) {
+    return res.status(400).json({ error: 'En az 1 hammadde girilmeli' });
   }
 
   const tedarikciId = newId();
@@ -57,26 +67,26 @@ router.post('/', (req, res) => {
       supplierName
     ]);
 
-    for (const pName of productNames) {
-      // Ürün var mi?
-      const [urunRows] = await pool.query(
-        'SELECT id FROM urunler WHERE LOWER(ad)=LOWER(?) LIMIT 1',
-        [pName]
+    for (const mName of materialNames) {
+      // Hammadde var mi?
+      const [hamRows] = await pool.query(
+        'SELECT id FROM hammaddeler WHERE LOWER(ad)=LOWER(?) LIMIT 1',
+        [mName]
       );
-      let urunId = urunRows[0]?.id;
-      if (!urunId) {
+      let hammaddeId = hamRows[0]?.id;
+      if (!hammaddeId) {
         const id = newId();
-        await pool.query('INSERT INTO urunler (id, ad, fiyat) VALUES (?,?,0)', [
-          id,
-          pName
-        ]);
-        urunId = id;
+        await pool.query(
+          'INSERT INTO hammaddeler (id, ad, miktar, birim) VALUES (?,?,0,NULL)',
+          [id, mName]
+        );
+        hammaddeId = id;
       }
 
       // Mapping ekle
       await pool.query(
-        'INSERT INTO tedarikci_urunler (tedarikciId, urunId) VALUES (?,?) ON DUPLICATE KEY UPDATE urunId=urunId',
-        [tedarikciId, urunId]
+        'INSERT INTO tedarikci_hammaddeler (tedarikciId, hammaddeId) VALUES (?,?) ON DUPLICATE KEY UPDATE hammaddeId=hammaddeId',
+        [tedarikciId, hammaddeId]
       );
     }
 
@@ -111,9 +121,10 @@ router.delete('/:id', (req, res) => {
     const [stokRows] = await pool.query('SELECT COUNT(*) as c FROM stok_hareketleri WHERE tedarikciId=?', [
       id
     ]);
-    const [mapRows] = await pool.query('SELECT COUNT(*) as c FROM tedarikci_urunler WHERE tedarikciId=?', [
-      id
-    ]);
+    const [mapRows] = await pool.query(
+      'SELECT COUNT(*) as c FROM tedarikci_hammaddeler WHERE tedarikciId=?',
+      [id]
+    );
 
     const stokCount = Number(stokRows?.[0]?.c || 0);
     const mapCount = Number(mapRows?.[0]?.c || 0);

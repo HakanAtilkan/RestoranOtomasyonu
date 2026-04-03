@@ -27,9 +27,13 @@ router.post('/', async (req, res) => {
   const birim = (req.body.birim || '').toString().trim();
   const tedarikciRaw = (req.body.tedarikciId || '').toString().trim();
 
+  if (!girilenHammadde || !birim || !miktar) {
+    return res.status(400).json({ error: 'Lütfen tüm boşlukları doldurunuz.' });
+  }
+
   // Girişte tedarikçi zorunlu, çıkışta opsiyonel (örn. yemek tesliminde otomatik düşüş)
   if (tip === 'giris' && !tedarikciRaw) {
-    return res.status(400).json({ error: 'Tedarikçi zorunlu' });
+    return res.status(400).json({ error: 'Lütfen tüm boşlukları doldurunuz.' });
   }
 
   const resolveTedarikciId = async (pool) => {

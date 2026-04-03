@@ -9,7 +9,7 @@ const UNIT_OPTIONS = [
 
 function RecipeBatchModal({ products = [], hammaddeler = [], onClose, onSaved }) {
   const [recipes, setRecipes] = useState([
-    { urunId: '', items: [{ hammaddeId: '', birim: 'kg', miktar: '' }] }
+    { urunAdi: '', items: [{ hammaddeId: '', birim: 'kg', miktar: '' }] }
   ]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -33,7 +33,7 @@ function RecipeBatchModal({ products = [], hammaddeler = [], onClose, onSaved })
   const addRecipe = () => {
     setRecipes((prev) => [
       ...prev,
-      { urunId: '', items: [{ hammaddeId: '', birim: 'kg', miktar: '' }] }
+      { urunAdi: '', items: [{ hammaddeId: '', birim: 'kg', miktar: '' }] }
     ]);
   };
 
@@ -63,7 +63,7 @@ function RecipeBatchModal({ products = [], hammaddeler = [], onClose, onSaved })
 
   const validate = () => {
     for (const r of recipes) {
-      if (!String(r.urunId || '').trim()) return 'Ürün seçmelisiniz.';
+      if (!String(r.urunAdi || '').trim()) return 'Ürün adını girmelisiniz.';
       for (const it of r.items) {
         if (!String(it.hammaddeId || '').trim()) return 'Hammadde seçmelisiniz.';
         if (!String(it.birim || '').trim()) return 'Birim seçmelisiniz.';
@@ -89,7 +89,7 @@ function RecipeBatchModal({ products = [], hammaddeler = [], onClose, onSaved })
     try {
       const payload = {
         recipes: recipes.map((r) => ({
-          urunId: r.urunId,
+          urunId: r.urunAdi,
           items: r.items.map((it) => ({
             hammaddeId: it.hammaddeId,
             birim: it.birim,
@@ -133,19 +133,19 @@ function RecipeBatchModal({ products = [], hammaddeler = [], onClose, onSaved })
             <div key={rIdx} className="modal-section">
               <div className="modal-section-head">
                 <div style={{ flex: 1 }}>
-                  <label className="add-label">Ürün</label>
-                  <select
+                  <label className="add-label">Ürün Adı</label>
+                  <input
                     className="add-input"
-                    value={r.urunId}
-                    onChange={(e) => updateRecipe(rIdx, { urunId: e.target.value })}
-                  >
-                    <option value="">Ürün seçin</option>
+                    value={r.urunAdi}
+                    onChange={(e) => updateRecipe(rIdx, { urunAdi: e.target.value })}
+                    placeholder="örn. Pizza"
+                    list={`products-datalist-${rIdx}`}
+                  />
+                  <datalist id={`products-datalist-${rIdx}`}>
                     {products.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.ad}
-                      </option>
+                      <option key={p.id} value={p.ad} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
                 <button
                   type="button"

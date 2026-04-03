@@ -276,9 +276,18 @@ router.post('/batch', (req, res) => {
   if (!pool) {
     const created = [];
     for (const r of recipes) {
-      const urunId = (r.urunId || '').toString().trim();
+      const urunRaw = (r.urunId || '').toString().trim(); // id veya ad
       const items = Array.isArray(r.items) ? r.items : [];
-      if (!urunId || items.length === 0) continue;
+      if (!urunRaw || items.length === 0) continue;
+
+      const byId = Urunler.findById(urunRaw);
+      const byName =
+        Urunler.findAll().find(
+          (u) => u.ad && u.ad.toString().toLowerCase() === urunRaw.toLowerCase()
+        ) || null;
+      const urunId = (byId || byName || Urunler.create({ ad: urunRaw, fiyat: 0 }))?.id;
+      if (!urunId) continue;
+
       for (const it of items) {
         const hammaddeId = (it.hammaddeId || '').toString().trim();
         const miktar = Number(it.miktar) || 0;
@@ -300,9 +309,29 @@ router.post('/batch', (req, res) => {
       await conn.beginTransaction();
       const created = [];
       for (const r of recipes) {
-        const urunId = (r.urunId || '').toString().trim();
+        const urunRaw = (r.urunId || '').toString().trim(); // id veya ad
         const items = Array.isArray(r.items) ? r.items : [];
-        if (!urunId || items.length === 0) continue;
+        if (!urunRaw || items.length === 0) continue;
+
+        let urunId = null;
+        const [byId] = await conn.query('SELECT id FROM urunler WHERE id=? LIMIT 1', [urunRaw]);
+        if (byId[0]?.id) {
+          urunId = byId[0].id;
+        } else {
+          const [byName] = await conn.query(
+            'SELECT id FROM urunler WHERE LOWER(ad)=LOWER(?) LIMIT 1',
+            [urunRaw]
+          );
+          if (byName[0]?.id) {
+            urunId = byName[0].id;
+          } else {
+            urunId = newId();
+            await conn.query('INSERT INTO urunler (id, ad, fiyat) VALUES (?,?,0)', [
+              urunId,
+              urunRaw
+            ]);
+          }
+        }
 
         for (const it of items) {
           const hammaddeId = (it.hammaddeId || '').toString().trim();

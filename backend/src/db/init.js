@@ -56,6 +56,15 @@ async function initDb() {
     )
   `);
 
+  // Tedarikçinin tedarik ettiği hammaddeler (yeni ilişki)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tedarikci_hammaddeler (
+      tedarikciId VARCHAR(64) NOT NULL,
+      hammaddeId VARCHAR(64) NOT NULL,
+      PRIMARY KEY (tedarikciId, hammaddeId)
+    )
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS stok_hareketleri (
       id VARCHAR(64) PRIMARY KEY,
