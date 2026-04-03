@@ -51,7 +51,9 @@ function formatColumnHeader(col) {
     masa: 'Masa',
     kullanici: 'Kullanıcı',
     urun: 'Ürün',
-    hammadde: 'Hammadde'
+    hammadde: 'Hammadde',
+    tedarikci: 'Tedarikçi',
+    urunlerText: 'Ürünler'
   };
   if (overrides[key]) return overrides[key];
 
