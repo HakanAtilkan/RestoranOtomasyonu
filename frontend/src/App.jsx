@@ -282,8 +282,6 @@ function App({ currentUser }) {
   const [reportTo, setReportTo] = useState('');
   const [reportRows, setReportRows] = useState([]);
 
-  // Masalar ekranında kartları ad (masa no) numarasina gore siralamak icin.
-  // Not: Tüm ekranlarda calistigindan dolayi ad olmayan kayitlarda 0 kabul ediyoruz.
   const sortedMasalar = [...rows].sort(
     (a, b) => (Number(a.ad) || 0) - (Number(b.ad) || 0)
   );
@@ -604,7 +602,6 @@ function App({ currentUser }) {
     }
   };
 
-  // Not: Reçete ekleme artık modal üzerinden /api/receteler/batch ile yapılıyor.
 
   const handleDelete = async (id) => {
     if (!selected) return;

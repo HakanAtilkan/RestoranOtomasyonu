@@ -14,11 +14,22 @@ function formatDateTimeTr(value) {
 }
 
 function formatCell(col, value) {
-  // Tarih alanları: tarih, ...Tarihi
   const c = String(col || '').toLowerCase();
   if (c === 'tarih' || c.endsWith('tarihi')) {
     const formatted = formatDateTimeTr(value);
     if (formatted) return formatted;
+  }
+  if (c === 'tip') {
+    const v = String(value || '').toLowerCase();
+    if (v === 'giris') return 'Giriş';
+    if (v === 'cikis') return 'Çıkış';
+  }
+  if (c === 'durum') {
+    const v = String(value || '').toLowerCase();
+    if (v === 'kapatildi') return 'Kapatıldı';
+    if (v === 'bekliyor') return 'Bekliyor';
+    if (v === 'hazirlaniyor') return 'Hazırlanıyor';
+    if (v === 'hazir') return 'Hazır';
   }
   return value == null ? '' : String(value);
 }
@@ -34,7 +45,6 @@ function titleCaseTr(text) {
 function formatColumnHeader(col) {
   const key = String(col || '');
 
-  // Öncelikli düzeltmeler (imla / Türkçe)
   const overrides = {
     kullaniciAdi: 'Kullanıcı Adı',
     sifre: 'Şifre',
@@ -57,7 +67,6 @@ function formatColumnHeader(col) {
   };
   if (overrides[key]) return overrides[key];
 
-  // snake_case + camelCase -> kelimelere ayır
   const spaced = key
     .replace(/_/g, ' ')
     .replace(/([a-zçğıöşü])([A-ZÇĞİÖŞÜ])/g, '$1 $2')
